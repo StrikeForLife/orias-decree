@@ -1,0 +1,16 @@
+PRAGMA foreign_keys=ON;
+CREATE TABLE users(id TEXT PRIMARY KEY,google_sub TEXT UNIQUE,email TEXT NOT NULL,name TEXT NOT NULL DEFAULT '');
+CREATE TABLE campaigns(id TEXT PRIMARY KEY,name TEXT NOT NULL,name_en TEXT NOT NULL DEFAULT '',intro TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 0 CHECK(active IN(0,1)));
+CREATE UNIQUE INDEX one_active_campaign ON campaigns(active) WHERE active=1;
+CREATE TABLE access_grants(id TEXT PRIMARY KEY,email TEXT NOT NULL,google_sub TEXT,user_id TEXT REFERENCES users(id),campaign_id TEXT NOT NULL REFERENCES campaigns(id),role TEXT NOT NULL CHECK(role IN('player','dm')),UNIQUE(email,campaign_id));
+CREATE TABLE definitions(kind TEXT NOT NULL,id TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(kind,id));
+CREATE TABLE characters(id TEXT PRIMARY KEY,campaign_id TEXT NOT NULL REFERENCES campaigns(id),owner_email TEXT NOT NULL,owner_user_id TEXT REFERENCES users(id),sheet TEXT NOT NULL,state TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 0,edit_class INTEGER NOT NULL DEFAULT 0,edit_spells INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE character_spells(character_id TEXT REFERENCES characters(id),spell_id TEXT NOT NULL,PRIMARY KEY(character_id,spell_id));
+CREATE TABLE character_weapons(character_id TEXT REFERENCES characters(id),weapon_id TEXT NOT NULL,PRIMARY KEY(character_id,weapon_id));
+CREATE TABLE sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),csrf TEXT NOT NULL,expires_at INTEGER NOT NULL);
+CREATE TABLE operations(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL REFERENCES users(id),character_id TEXT NOT NULL REFERENCES characters(id),request TEXT NOT NULL,before_state TEXT NOT NULL,after_state TEXT NOT NULL,result_version INTEGER NOT NULL,created_at INTEGER NOT NULL,undone_by TEXT);
+CREATE TABLE session_notes(id TEXT PRIMARY KEY,character_id TEXT NOT NULL REFERENCES characters(id),author_id TEXT NOT NULL REFERENCES users(id),title TEXT NOT NULL,date TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 0,deleted INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX notes_by_character ON session_notes(character_id,deleted);
+CREATE INDEX character_campaign ON characters(campaign_id);
+CREATE INDEX grants_user ON access_grants(user_id,campaign_id);
+CREATE INDEX session_expiry ON sessions(expires_at);

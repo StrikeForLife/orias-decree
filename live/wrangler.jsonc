@@ -1,0 +1,22 @@
+{
+  "name": "oria-decree",
+  "main": "server/worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "oria-decree",
+      "database_id": "REPLACE_WITH_CREATED_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "APP_ORIGIN": "https://REPLACE_WITH_WORKER_HOST",
+    "GOOGLE_CLIENT_ID": ""
+  }
+}

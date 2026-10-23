@@ -1,0 +1,1 @@
+{"name":"oria-decree","private":true,"type":"module","scripts":{"dev":"node live/scripts/build.mjs && PORT=4173 node live/scripts/dev.mjs","build:live":"node live/scripts/build.mjs","test":"node --test live/test/*.test.mjs"}}
