@@ -1,0 +1,102 @@
+name: Deploy production (manual)
+run-name: Production release · ${{ inputs.release_ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: 'Commit SHA, tag, or main (must belong to main history)'
+        required: true
+        default: main
+        type: string
+      backup_confirmed:
+        description: 'I have a recent verified D1 backup and reviewed schema compatibility'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oria-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Confirm backup acknowledgement
+        env:
+          BACKUP_CONFIRMED: ${{ inputs.backup_confirmed }}
+        run: |
+          if [ "$BACKUP_CONFIRMED" != "true" ]; then
+            echo '::error::Confirm a recent verified backup before releasing.'
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Resolve an immutable release from main history
+        id: release
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse --verify --end-of-options "${RELEASE_REF}^{commit}")
+          git merge-base --is-ancestor "$sha" origin/main
+          cp -R .github/scripts "$RUNNER_TEMP/oria-release-tools"
+          cp deploy/production.json "$RUNNER_TEMP/oria-production.json"
+          git checkout --detach "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Selected release: $sha"
+
+      - name: Test selected release
+        run: npm test
+
+      - name: Build selected release
+        run: npm run build:live
+
+      - name: Generate production configuration
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node "$RUNNER_TEMP/oria-release-tools/production.mjs" prepare "$RUNNER_TEMP/oria-production.json"
+
+      - name: Check production schema (read only)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node "$RUNNER_TEMP/oria-release-tools/production.mjs" preflight
+
+      - name: Deploy existing production Worker
+        id: cloudflare
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: live
+          wranglerVersion: '4'
+          command: deploy --config wrangler.actions.jsonc
+
+      - name: Record successful release
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          {
+            echo '## Production release'
+            echo "Commit: $RELEASE_SHA"
+            echo 'Worker: oria-decree'
+            echo 'URL: https://oria-decree.lochunfaisamson.workers.dev'
+            echo 'Tests, build and schema preflight passed.'
+            echo 'No migrations, data imports, or Worker secret updates were run.'
+          } >> "$GITHUB_STEP_SUMMARY"

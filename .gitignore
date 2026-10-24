@@ -19,3 +19,6 @@ content-edit.json
 dist/data.json
 dist/background.json
 wrangler.recovery.jsonc
+
+**/wrangler.actions.jsonc
+**/wrangler.production.local.jsonc
