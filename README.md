@@ -30,4 +30,4 @@ npm run dev
 
 Repository 不包含真實角色、私人筆記、帳號對照、備份或憑證，也不包含先前私人版本的 Git history。測試使用虛構資料。正式資料保存在 D1，網站內編輯不會自動回寫 Git 或 Google Sheets。
 
-舊資料 seed 工具需由管理者另提供私人來源快照，不是重新部署必要步驟；已有 D1 不要重跑 seed。GitHub Actions 只檢查測試與 build，不部署至正式環境。
+舊資料 seed 工具需由管理者另提供私人來源快照，不是重新部署必要步驟；已有 D1 不要重跑 seed。GitHub Actions 在 push／PR 時檢查測試與 build；正式站透過獨立的手動 workflow 發布。詳見 [發布流程](docs/RELEASING.md)。
