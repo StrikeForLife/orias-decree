@@ -1,73 +1,738 @@
-import {PALETTES,BELIEF_KEYS,originKey,tones} from './lore-colours.mjs';
-import {damage} from './rules.mjs';
-const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])), ids=s=>String(s||'').split(',').map(x=>x.trim()).filter(Boolean);
-const data=await fetch('data.json').then(r=>{if(!r.ok)throw Error('資料載入失敗');return r.json()}).catch(e=>{$('#content').textContent=e.message;throw e});
-data.background=await fetch('background.json').then(r=>{if(!r.ok)throw Error('出身資料載入失敗');return r.json()});
-const find=(table,id)=>data[table].find(r=>r.system_id===id)||{},campaign=data.campaign.find(r=>r.Status==='TRUE'),characters=data.character.filter(r=>r.Campaign===campaign?.system_id);
-let state={characters:{},notes:{}},page='角色',tab='冒險裝備',selected=characters[0]?.system_id,undo=null,editing=null;
-try{state=JSON.parse(localStorage.getItem('oria-playtest-v1'))||state}catch{toast('無法讀取舊測試紀錄，使用原始資料')}
-function toast(s){$('#toast').textContent=s;$('#toast').style.display='block';setTimeout(()=>$('#toast').style.display='none',3000)}
-function persist(){try{localStorage.setItem('oria-playtest-v1',JSON.stringify(state));$('#save').textContent='✓ 本機已儲存';return true}catch{$('#save').textContent='儲存失敗：請勿關閉頁面';toast('本機儲存失敗，資料只保留於當前頁面');return false}}
-function stateFor(id){const r=find('character',id);return state.characters[id]??= {hp:Number(r['Current Health']),temp:0,will:Number(r['Current Willpower']),wounds:[],general:r.Notes||'',inventory:r.Inventory||''}}
-function current(){return stateFor(selected)}
-function mutate(fn){undo={selected,value:structuredClone(current())};fn(current());persist();render()}
-function showDetail(title,en,body){$('#detail').classList.remove('lore-coloured');$('#detail').innerHTML=`<div class="eyebrow">規則與故事</div><h2>${esc(title)}</h2><p class="english">${esc(en)}</p><div class="prose">${esc(body||'資料來源尚未填寫內容。')}</div>`}
-function status(){const r=find('character',selected),s=current(),cl=find('class',r.Class),sc=find('school',r.School);$('#status').innerHTML=`<span class="tag">等級 ${esc(r.Level)}</span><h2>${esc(r['Character Name'])}</h2><p class="muted">${esc(cl['Class Name (Chinese)'])} · ${esc(sc['School Name (Chinese)'])}</p>${combatStats(r)}<div class="section vitality-chamber"><div class="resource-heading"><span aria-hidden="true">❖</span><small>生命之焰 · HP</small></div><div class="big">${s.hp} <small>/ ${esc(r['Max Health'])}</small></div><div class="bar"><span style="width:${Math.min(100,Math.max(0,s.hp/Number(r['Max Health'])*100))}%"></span></div><div class="row"><small>臨時生命</small><b>${s.temp}</b><button id="temp">調整</button></div><label>傷害數值<input id="damage" type="number" min="0" step="1" placeholder="0"></label><label><input id="exempt" type="checkbox" style="width:auto"> 此傷害不納入止傷判定</label><p id="preview" class="muted">先扣臨時生命，再判定傷口。</p><button id="hit" class="danger">承受傷害</button> <button id="undo" ${undo?.selected===selected?'':'disabled'}>撤銷</button></div><div class="section will-chamber"><div class="resource-heading"><span aria-hidden="true">✧</span><small>意志之泉</small></div><div class="row"><small>意志</small><b>${s.will} / ${esc(r['Max Willpower'])}</b></div><button id="pray" ${s.will<1?'disabled':''} style="width:100%;margin-top:10px">祈禱 · 消耗 1 意志</button><small>魅力檢定 DC 9，失敗亦消耗。</small></div><div class="section wound-chamber"><h3>待結算傷口 <span class="tag">${s.wounds.length}</span></h3>${s.wounds.map((w,i)=>`<div class="wound"><div>下一回合 · ${w} 傷害</div><button data-settle="${i}">結算</button> <button data-stop="${i}">止傷</button></div>`).join('')||'<small>目前沒有待結算傷口</small>'}${s.hp<=0?'<button id="stabilize">昏迷止傷 · 恢復 10%</button>':''}</div>`;
-$('#damage').oninput=()=>{const n=Number($('#damage').value);const d=damage(s.hp,s.temp,+r['Max Health'],n,$('#exempt').checked);$('#preview').textContent=`臨時生命吸收 ${d.absorbed} · 即時扣血 ${d.immediate} · 傷口 ${d.deferred}`};$('#exempt').onchange=$('#damage').oninput;
-$('#hit').onclick=()=>{const n=Number($('#damage').value);if(!Number.isSafeInteger(n)||n<=0)return toast('請輸入正整數傷害');const d=damage(s.hp,s.temp,+r['Max Health'],n,$('#exempt').checked);mutate(s=>{s.hp=d.hp;s.temp=d.temp;if(d.deferred)s.wounds.push(d.deferred)});toast('傷害已記錄，可撤銷')};
-$('#temp').onclick=()=>{const v=prompt('輸入臨時生命增減值（例如 5 或 -2）', '0');if(v===null)return;const n=Number(v);if(!Number.isSafeInteger(n))return toast('請輸入整數');mutate(s=>s.temp=Math.max(0,s.temp+n))};
-$('#undo').onclick=()=>{state.characters[selected]=undo.value;undo=null;persist();render()};$('#pray').onclick=()=>{const bs=ids(r.Beliefs).map(id=>find('beliefs',id));if(!confirm('消耗 1 點意志進行祈禱？請在 Tabletop Simulator 完成魅力檢定 DC 9。'))return;mutate(s=>s.will--);showDetail('祈禱','Prayer',bs.map(b=>[b.Name,b['Belief Effect 1'],b['Belief Effect 2']].filter(Boolean).join('\n')).join('\n\n')+'\n\n效果欄若未填寫，請依 DM 裁定。')};
-$$('[data-settle]').forEach(b=>b.onclick=()=>mutate(s=>{s.hp-=s.wounds.splice(+b.dataset.settle,1)[0]}));$$('[data-stop]').forEach(b=>b.onclick=()=>mutate(s=>s.wounds.splice(+b.dataset.stop,1)));if($('#stabilize'))$('#stabilize').onclick=()=>mutate(s=>s.hp=Math.ceil(+r['Max Health']/10));}
-function $$(s){return [...document.querySelectorAll(s)]}
+import { PALETTES, BELIEF_KEYS, originKey, tones } from './lore-colours.mjs';
+import { damage } from './rules.mjs';
+const $ = (s) => document.querySelector(s),
+  esc = (s) =>
+    String(s ?? '').replace(
+      /[&<>"']/g,
+      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+    ),
+  ids = (s) =>
+    String(s || '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+// @live-state:start
+const data = await fetch('data.json')
+  .then((r) => {
+    if (!r.ok) throw Error('資料載入失敗');
+    return r.json();
+  })
+  .catch((e) => {
+    $('#content').textContent = e.message;
+    throw e;
+  });
+data.background = await fetch('background.json').then((r) => {
+  if (!r.ok) throw Error('出身資料載入失敗');
+  return r.json();
+});
+const find = (table, id) => data[table].find((r) => r.system_id === id) || {},
+  campaign = data.campaign.find((r) => r.Status === 'TRUE'),
+  characters = data.character.filter((r) => r.Campaign === campaign?.system_id);
+let state = { characters: {}, notes: {} },
+  page = '角色',
+  tab = '冒險裝備',
+  selected = characters[0]?.system_id,
+  undo = null,
+  editing = null;
+try {
+  state = JSON.parse(localStorage.getItem('oria-playtest-v1')) || state;
+} catch {
+  toast('無法讀取舊測試紀錄，使用原始資料');
+}
+function toast(s) {
+  $('#toast').textContent = s;
+  $('#toast').style.display = 'block';
+  setTimeout(() => ($('#toast').style.display = 'none'), 3000);
+}
+function persist() {
+  try {
+    localStorage.setItem('oria-playtest-v1', JSON.stringify(state));
+    $('#save').textContent = '✓ 本機已儲存';
+    return true;
+  } catch {
+    $('#save').textContent = '儲存失敗：請勿關閉頁面';
+    toast('本機儲存失敗，資料只保留於當前頁面');
+    return false;
+  }
+}
+function stateFor(id) {
+  const r = find('character', id);
+  return (state.characters[id] ??= {
+    hp: Number(r['Current Health']),
+    temp: 0,
+    will: Number(r['Current Willpower']),
+    wounds: [],
+    general: r.Notes || '',
+    inventory: r.Inventory || '',
+  });
+}
+function current() {
+  return stateFor(selected);
+}
+function mutate(fn) {
+  undo = { selected, value: structuredClone(current()) };
+  fn(current());
+  persist();
+  render();
+}
+function undoResource() {
+  state.characters[selected] = undo.value;
+  undo = null;
+  persist();
+  render();
+}
+function queuePrivate() {
+  persist();
+}
+// @live-state:end
+function showDetail(title, en, body) {
+  $('#detail').classList.remove('lore-coloured');
+  $('#detail').innerHTML =
+    `<div class="eyebrow">規則與故事</div><h2>${esc(title)}</h2><p class="english">${esc(en)}</p><div class="prose">${esc(body || '資料來源尚未填寫內容。')}</div>`;
+}
+function status() {
+  const r = find('character', selected),
+    s = current(),
+    cl = find('class', r.Class),
+    sc = find('school', r.School);
+  $('#status').innerHTML =
+    `<span class="tag">等級 ${esc(r.Level)}</span><h2>${esc(r['Character Name'])}</h2><p class="muted">${esc(cl['Class Name (Chinese)'])} · ${esc(sc['School Name (Chinese)'])}</p>${combatStats(r)}<div class="section vitality-chamber"><div class="resource-heading"><span aria-hidden="true">❖</span><small>生命之焰 · HP</small></div><div class="big">${s.hp} <small>/ ${esc(r['Max Health'])}</small></div><div class="bar"><span style="width:${Math.min(100, Math.max(0, (s.hp / Number(r['Max Health'])) * 100))}%"></span></div><div class="row"><small>臨時生命</small><b>${s.temp}</b><button id="temp">調整</button></div><label>傷害數值<input id="damage" type="number" min="0" step="1" placeholder="0"></label><label><input id="exempt" type="checkbox" style="width:auto"> 此傷害不納入止傷判定</label><p id="preview" class="muted">先扣臨時生命，再判定傷口。</p><button id="hit" class="danger">承受傷害</button> <button id="undo" ${undo?.selected === selected ? '' : 'disabled'}>撤銷</button></div><div class="section will-chamber"><div class="resource-heading"><span aria-hidden="true">✧</span><small>意志之泉</small></div><div class="row"><small>意志</small><b>${s.will} / ${esc(r['Max Willpower'])}</b></div><button id="pray" ${s.will < 1 ? 'disabled' : ''} style="width:100%;margin-top:10px">祈禱 · 消耗 1 意志</button><small>魅力檢定 DC 9，失敗亦消耗。</small></div><div class="section wound-chamber"><h3>待結算傷口 <span class="tag">${s.wounds.length}</span></h3>${s.wounds.map((w, i) => `<div class="wound"><div>下一回合 · ${w} 傷害</div><button data-settle="${i}">結算</button> <button data-stop="${i}">止傷</button></div>`).join('') || '<small>目前沒有待結算傷口</small>'}${s.hp <= 0 ? '<button id="stabilize">昏迷止傷 · 恢復 10%</button>' : ''}</div>`;
+  $('#damage').oninput = () => {
+    const n = Number($('#damage').value);
+    const d = damage(s.hp, s.temp, +r['Max Health'], n, $('#exempt').checked);
+    $('#preview').textContent =
+      `臨時生命吸收 ${d.absorbed} · 即時扣血 ${d.immediate} · 傷口 ${d.deferred}`;
+  };
+  $('#exempt').onchange = $('#damage').oninput;
+  $('#hit').onclick = () => {
+    const n = Number($('#damage').value);
+    if (!Number.isSafeInteger(n) || n <= 0) return toast('請輸入正整數傷害');
+    const d = damage(s.hp, s.temp, +r['Max Health'], n, $('#exempt').checked);
+    mutate(
+      (s) => {
+        s.hp = d.hp;
+        s.temp = d.temp;
+        if (d.deferred) s.wounds.push(d.deferred);
+      },
+      { kind: 'damage', amount: n, exempt: $('#exempt').checked },
+    );
+    toast('傷害已記錄，可撤銷');
+  };
+  $('#temp').onclick = () => {
+    const v = prompt('輸入臨時生命增減值（例如 5 或 -2）', '0');
+    if (v === null) return;
+    const n = Number(v);
+    if (!Number.isSafeInteger(n)) return toast('請輸入整數');
+    mutate((s) => (s.temp = Math.max(0, s.temp + n)), { kind: 'temp', amount: n });
+  };
+  $('#undo').onclick = undoResource;
+  $('#pray').onclick = () => {
+    const bs = ids(r.Beliefs).map((id) => find('beliefs', id));
+    if (!confirm('消耗 1 點意志進行祈禱？請在 Tabletop Simulator 完成魅力檢定 DC 9。')) return;
+    mutate((s) => s.will--, { kind: 'pray' });
+    showDetail(
+      '祈禱',
+      'Prayer',
+      bs
+        .map((b) => [b.Name, b['Belief Effect 1'], b['Belief Effect 2']].filter(Boolean).join('\n'))
+        .join('\n\n') + '\n\n效果欄若未填寫，請依 DM 裁定。',
+    );
+  };
+  $$('[data-settle]').forEach(
+    (b) =>
+      (b.onclick = () =>
+        mutate(
+          (s) => {
+            s.hp -= s.wounds.splice(+b.dataset.settle, 1)[0];
+          },
+          { kind: 'settle', index: +b.dataset.settle },
+        )),
+  );
+  $$('[data-stop]').forEach(
+    (b) =>
+      (b.onclick = () =>
+        mutate((s) => s.wounds.splice(+b.dataset.stop, 1), {
+          kind: 'stop',
+          index: +b.dataset.stop,
+        })),
+  );
+  if ($('#stabilize'))
+    $('#stabilize').onclick = () =>
+      mutate((s) => (s.hp = Math.ceil(+r['Max Health'] / 10)), { kind: 'stabilize' });
+}
+function $$(s) {
+  return [...document.querySelectorAll(s)];
+}
 // Shared presentation helpers keep editable and read-only character sheets consistent.
-const attributesList=[['力量','Strength','STR','◆'],['靈巧','Dexterity','DEX','➶'],['韌性','Constitution','CON','⬡'],['智力','Intelligence','INT','✧'],['感知','Wisdom','WIS','◉'],['魅力','Charisma','CHA','❖']];
-function attributes(r){return `<div class="attributes">${attributesList.map(([cn,key,en,icon],i)=>`<div class="ability ability-${i}"><span class="ability-icon">${icon}</span><small>${cn} <em>${en}</em></small><b>${Number(r[key])>0?'+':''}${esc(r[key])}</b></div>`).join('')}</div>`}
-function combatStats(r){return `<div class="combat-stats"><div class="defense"><span>⬡</span><b>${esc(r['Armor Class']||'—')}</b><small>護甲 AC</small></div><div class="spell-dc"><span>✧</span><b>${esc(r['Spell Difficulty']||'—')}</b><small>法術難度 DC</small></div></div>`}
-function schoolKey(id){return BELIEF_KEYS[find('school',id).Belief]||'neutral'}
-function classKeys(id){const i=data.class.findIndex(c=>c.system_id===id);return [i<0?'neutral':'class-'+i]}
-function paintLore(el,keys){if(!el)return;const list=(Array.isArray(keys)?keys:[keys]).filter(Boolean);if(!list.length)list.push('neutral');const colors=list.map(tones),t=colors[0];el.classList.add('lore-coloured');el.dataset.lore=list.join(' ');el.style.setProperty('--lore-accent',t.accent);el.style.setProperty('--lore-light',t.light);el.style.setProperty('--lore-fill',t.fill);el.style.setProperty('--lore-base',t.base);const bands=colors.flatMap((c,i)=>[`${c.accent} ${i/colors.length*100}%`,`${c.accent} ${(i+1)/colors.length*100}%`]);el.style.setProperty('--lore-band',`linear-gradient(90deg,${bands.join(',')})`)}
-function applyLoreColours(){ $$('[data-belief]').forEach(el=>paintLore(el,BELIEF_KEYS[el.dataset.belief]||'neutral'));$$('[data-origin]').forEach(el=>paintLore(el,originKey(find('background',el.dataset.origin)['Main Branch'])));$$('[data-school]').forEach(el=>{const key=schoolKey(el.dataset.school);paintLore(el,key);if(el.classList.contains('school-title'))paintLore(el.closest('.school-page'),key)});$$('[data-class], [data-volume]').forEach(el=>paintLore(el,classKeys(el.dataset.class||el.dataset.volume)));$$('.catalog-group').forEach(el=>{if(el.querySelector('[data-origin]'))paintLore(el,originKey(el.querySelector('h3').textContent))});$$('.chapter-banner').forEach(el=>{const b=el.querySelector('[data-class]');if(b)paintLore(el,classKeys(b.dataset.class))})}
-function field(label,value){return `<div class="detail-field"><dt>${esc(label)}</dt><dd>${esc(value||'尚未填寫')}</dd></div>`}
-function detailSection(label,value){return `<section class="detail-section"><h3>${esc(label)}</h3><div class="prose">${esc(value||'資料來源尚未填寫內容。')}</div></section>`}
-function detailLayout(title,en,html){$('#detail').classList.remove('lore-coloured');$('#detail').innerHTML=`<div class="eyebrow">規則與故事</div><h2>${esc(title)}</h2><p class="english">${esc(en||'')}</p>${html}`;$('#detail').scrollTop=0}
-function identityCards(r){const cl=find('class',r.Class),sc=find('school',r.School);return `<div class="identity-cards"><button class="identity-card class-identity" data-class="${esc(r.Class)}"><span class="identity-icon">⚔</span><small>職業 Class</small><strong>${esc(cl['Class Name (Chinese)'])}</strong><span>${esc(cl['Short Desc']||'查看職業介紹')} ↗</span></button><button class="identity-card school-identity" data-school="${esc(r.School)}"><span class="identity-icon">✧</span><small>法源道 School</small><strong>${esc(sc['School Name (Chinese)'])}</strong><span>${esc(sc.Title||'查看法源道介紹')} ↗</span></button></div>`}
+const attributesList = [
+  ['力量', 'Strength', 'STR', '◆'],
+  ['靈巧', 'Dexterity', 'DEX', '➶'],
+  ['韌性', 'Constitution', 'CON', '⬡'],
+  ['智力', 'Intelligence', 'INT', '✧'],
+  ['感知', 'Wisdom', 'WIS', '◉'],
+  ['魅力', 'Charisma', 'CHA', '❖'],
+];
+function attributes(r) {
+  return `<div class="attributes">${attributesList.map(([cn, key, en, icon], i) => `<div class="ability ability-${i}"><span class="ability-icon">${icon}</span><small>${cn} <em>${en}</em></small><b>${Number(r[key]) > 0 ? '+' : ''}${esc(r[key])}</b></div>`).join('')}</div>`;
+}
+function combatStats(r) {
+  return `<div class="combat-stats"><div class="defense"><span>⬡</span><b>${esc(r['Armor Class'] || '—')}</b><small>護甲 AC</small></div><div class="spell-dc"><span>✧</span><b>${esc(r['Spell Difficulty'] || '—')}</b><small>法術難度 DC</small></div></div>`;
+}
+function schoolKey(id) {
+  return BELIEF_KEYS[find('school', id).Belief] || 'neutral';
+}
+function classKeys(id) {
+  const i = data.class.findIndex((c) => c.system_id === id);
+  return [i < 0 ? 'neutral' : 'class-' + i];
+}
+function paintLore(el, keys) {
+  if (!el) return;
+  const list = (Array.isArray(keys) ? keys : [keys]).filter(Boolean);
+  if (!list.length) list.push('neutral');
+  const colors = list.map(tones),
+    t = colors[0];
+  el.classList.add('lore-coloured');
+  el.dataset.lore = list.join(' ');
+  el.style.setProperty('--lore-accent', t.accent);
+  el.style.setProperty('--lore-light', t.light);
+  el.style.setProperty('--lore-fill', t.fill);
+  el.style.setProperty('--lore-base', t.base);
+  const bands = colors.flatMap((c, i) => [
+    `${c.accent} ${(i / colors.length) * 100}%`,
+    `${c.accent} ${((i + 1) / colors.length) * 100}%`,
+  ]);
+  el.style.setProperty('--lore-band', `linear-gradient(90deg,${bands.join(',')})`);
+}
+function applyLoreColours() {
+  $$('[data-belief]').forEach((el) => paintLore(el, BELIEF_KEYS[el.dataset.belief] || 'neutral'));
+  $$('[data-origin]').forEach((el) =>
+    paintLore(el, originKey(find('background', el.dataset.origin)['Main Branch'])),
+  );
+  $$('[data-school]').forEach((el) => {
+    const key = schoolKey(el.dataset.school);
+    paintLore(el, key);
+    if (el.classList.contains('school-title')) paintLore(el.closest('.school-page'), key);
+  });
+  $$('[data-class], [data-volume]').forEach((el) =>
+    paintLore(el, classKeys(el.dataset.class || el.dataset.volume)),
+  );
+  $$('.catalog-group').forEach((el) => {
+    if (el.querySelector('[data-origin]'))
+      paintLore(el, originKey(el.querySelector('h3').textContent));
+  });
+  $$('.chapter-banner').forEach((el) => {
+    const b = el.querySelector('[data-class]');
+    if (b) paintLore(el, classKeys(b.dataset.class));
+  });
+}
+function field(label, value) {
+  return `<div class="detail-field"><dt>${esc(label)}</dt><dd>${esc(value || '尚未填寫')}</dd></div>`;
+}
+function detailSection(label, value) {
+  return `<section class="detail-section"><h3>${esc(label)}</h3><div class="prose">${esc(value || '資料來源尚未填寫內容。')}</div></section>`;
+}
+function detailLayout(title, en, html) {
+  $('#detail').classList.remove('lore-coloured');
+  $('#detail').innerHTML =
+    `<div class="eyebrow">規則與故事</div><h2>${esc(title)}</h2><p class="english">${esc(en || '')}</p>${html}`;
+  $('#detail').scrollTop = 0;
+}
+function identityCards(r) {
+  const cl = find('class', r.Class),
+    sc = find('school', r.School);
+  return `<div class="identity-cards"><button class="identity-card class-identity" data-class="${esc(r.Class)}"><span class="identity-icon">⚔</span><small>職業 Class</small><strong>${esc(cl['Class Name (Chinese)'])}</strong><span>${esc(cl['Short Desc'] || '查看職業介紹')} ↗</span></button><button class="identity-card school-identity" data-school="${esc(r.School)}"><span class="identity-icon">✧</span><small>法源道 School</small><strong>${esc(sc['School Name (Chinese)'])}</strong><span>${esc(sc.Title || '查看法源道介紹')} ↗</span></button></div>`;
+}
 // Only remove an exact legacy faith heading at the start; never infer or rewrite the character's story.
-function storyText(r){let story=r['Background Story']||'';for(const id of ids(r.Beliefs)){const b=find('beliefs',id);for(const title of [b.Title,b.Name].filter(Boolean)){if(story.trimStart().startsWith(title)){story=story.trimStart().slice(title.length).replace(/^\s*Desc\s*/,'').trimStart();if(b.Quote&&story.startsWith(b.Quote))story=story.slice(b.Quote.length).trimStart();break}}}return story}
-function chineseName(name){return String(name||'').split(/\s+(?=[A-Za-z“])/)[0]}
-function originDetail(id){const bg=find('background',id);detailLayout(chineseName(bg.Name),bg.Name,`<div class="detail-fields">${field('所屬地區／勢力',bg['Main Branch'])}${bg.Personality?field('地域性格',bg.Personality):''}</div>${detailSection('出身介紹',bg.Desc)}${bg['Skill 1']?detailSection('背景能力一',bg['Skill 1']):''}${bg['Skill 2']?detailSection('背景能力二',bg['Skill 2']):''}`);paintLore($('#detail'),originKey(bg['Main Branch']));paintLore($('#detail .detail-field'),originKey(bg['Main Branch']))}
-function beliefDetail(id){const b=find('beliefs',id),name=chineseName(b.Name),english=b.Name.slice(name.length).trim();$('#detail').classList.remove('lore-coloured');$('#detail').innerHTML=`<div class="divine-heading"><div class="divine-halo" aria-hidden="true">✺</div><div class="eyebrow">信仰典藏</div><h2>${esc(name)}${english?`<span>${esc(english)}</span>`:''}</h2><p class="divine-title">${esc(b.Title)}</p><div class="divine-rule" aria-hidden="true">✦ ─ ✧ ─ ✦</div></div>${b.Quote?`<blockquote class="belief-quote">${esc(b.Quote)}</blockquote>`:''}${detailSection('信仰介紹',b.Desc)}${b['Belief Effect 1']?detailSection('祈禱效果一',b['Belief Effect 1']):''}${b['Belief Effect 2']?detailSection('祈禱效果二',b['Belief Effect 2']):''}`;$('#detail').scrollTop=0;paintLore($('#detail'),BELIEF_KEYS[id]||'neutral')}
-function beliefTile(b){return `<button class="belief-monument" data-belief="${b.system_id}"><span class="monument-sigil" aria-hidden="true">✺</span><strong>${esc(chineseName(b.Name))}</strong><span class="monument-title">${esc(chineseName(b.Title))}</span><span class="monument-rule" aria-hidden="true">✦</span></button>`}
-function backgroundView(r){const bg=find('background',r.Background);return `<div class="background-heading"><span>✥</span><div class="eyebrow">ROOTS · BELIEFS · STORY</div><h2>背景與來歷</h2></div><section class="background-index"><h3>出身 Origin</h3><div class="chips"><button class="chip origin-chip" data-origin="${esc(r.Background)}">⌖ ${esc(chineseName(bg.Name)||'未指定出身')} ↗</button></div><h3>信仰 Belief</h3><div class="chips">${ids(r.Beliefs).map(id=>`<button class="chip belief-chip" data-belief="${esc(id)}">❖ ${esc(chineseName(find('beliefs',id).Name))} ↗</button>`).join('')||'<small class="muted">尚未指定信仰</small>'}</div><small class="muted">點選標籤，在右側閱讀來歷與信仰。</small></section><section class="story-section"><h3 class="chapter-title">角色故事 Story</h3><div class="prose">${esc(storyText(r)||'尚未填寫背景故事')}</div></section>`}
-function schoolDetail(id){const x=find('school',id),cl=find('class',x.Class);detailLayout(x['School Name (Chinese)'],x['School Name (English)'],`<div class="detail-fields">${field('職業 Class',cl['Class Name (Chinese)'])}${field('信仰 Belief',find('beliefs',x.Belief).Name)}</div>${detailSection('理念',x.Title)}${detailSection('法源道介紹',x.Desc)}${x.Passive?detailSection('被動能力',x.Passive):''}`);paintLore($('#detail'),schoolKey(id))}
-function classDetail(id){const x=find('class',id);detailLayout(x['Class Name (Chinese)'],x['Class Name (English)'],`${detailSection('職業定位',x['Short Desc'])}${detailSection('職業介紹',x['Class Desc'])}`);paintLore($('#detail'),classKeys(id))}
-function spellDetail(x){const school=find('school',x.School),cl=find('class',school.Class);detailLayout(x['Spell Name (Chinese)'],x['Spell Name (English)'],`<div class="detail-fields">${field('職業 Class',cl['Class Name (Chinese)'])}${field('法源道 School',school['School Name (Chinese)'])}${field('行動類型 Action',x['Action Type'])}${field('目標／範圍 Target',x.Target)}</div>${detailSection('法術效果 Description',x['Spell Desc'])}`);paintLore($('#detail'),schoolKey(x.School))}
-function weaponDetail(w){detailLayout(w['Weapon Name'],'',`<div class="detail-fields">${field('武器類型 Type',w['Weapon Type'])}${field('傷害 Damage',w.Damage)}</div>${detailSection('武器效果 Effect',w.Effect)}`)}
-function bindDetails(){ $$('[data-origin]').forEach(b=>b.onclick=()=>{activate(b);originDetail(b.dataset.origin)});$$('[data-belief]').forEach(b=>b.onclick=()=>{activate(b);beliefDetail(b.dataset.belief)}); $$('[data-spell]').forEach(b=>b.onclick=()=>{activate(b);spellDetail(find('spell',b.dataset.spell))});$$('[data-weapon]').forEach(b=>b.onclick=()=>{activate(b);weaponDetail(find('weapon',b.dataset.weapon))});$$('[data-school]').forEach(b=>b.onclick=()=>schoolDetail(b.dataset.school));$$('[data-class]').forEach(b=>b.onclick=()=>classDetail(b.dataset.class));}
-function wireDetails(){bindDetails();applyLoreColours()}
-function activate(b){$$('.chip.selected').forEach(x=>x.classList.remove('selected'));b.classList.add('selected')}
+function storyText(r) {
+  let story = r['Background Story'] || '';
+  for (const id of ids(r.Beliefs)) {
+    const b = find('beliefs', id);
+    for (const title of [b.Title, b.Name].filter(Boolean)) {
+      if (story.trimStart().startsWith(title)) {
+        story = story
+          .trimStart()
+          .slice(title.length)
+          .replace(/^\s*Desc\s*/, '')
+          .trimStart();
+        if (b.Quote && story.startsWith(b.Quote)) story = story.slice(b.Quote.length).trimStart();
+        break;
+      }
+    }
+  }
+  return story;
+}
+function chineseName(name) {
+  return String(name || '').split(/\s+(?=[A-Za-z“])/)[0];
+}
+function originDetail(id) {
+  const bg = find('background', id);
+  detailLayout(
+    chineseName(bg.Name),
+    bg.Name,
+    `<div class="detail-fields">${field('所屬地區／勢力', bg['Main Branch'])}${bg.Personality ? field('地域性格', bg.Personality) : ''}</div>${detailSection('出身介紹', bg.Desc)}${bg['Skill 1'] ? detailSection('背景能力一', bg['Skill 1']) : ''}${bg['Skill 2'] ? detailSection('背景能力二', bg['Skill 2']) : ''}`,
+  );
+  paintLore($('#detail'), originKey(bg['Main Branch']));
+  paintLore($('#detail .detail-field'), originKey(bg['Main Branch']));
+}
+function beliefDetail(id) {
+  const b = find('beliefs', id),
+    name = chineseName(b.Name),
+    english = b.Name.slice(name.length).trim();
+  $('#detail').classList.remove('lore-coloured');
+  $('#detail').innerHTML =
+    `<div class="divine-heading"><div class="divine-halo" aria-hidden="true">✺</div><div class="eyebrow">信仰典藏</div><h2>${esc(name)}${english ? `<span>${esc(english)}</span>` : ''}</h2><p class="divine-title">${esc(b.Title)}</p><div class="divine-rule" aria-hidden="true">✦ ─ ✧ ─ ✦</div></div>${b.Quote ? `<blockquote class="belief-quote">${esc(b.Quote)}</blockquote>` : ''}${detailSection('信仰介紹', b.Desc)}${b['Belief Effect 1'] ? detailSection('祈禱效果一', b['Belief Effect 1']) : ''}${b['Belief Effect 2'] ? detailSection('祈禱效果二', b['Belief Effect 2']) : ''}`;
+  $('#detail').scrollTop = 0;
+  paintLore($('#detail'), BELIEF_KEYS[id] || 'neutral');
+}
+function beliefTile(b) {
+  return `<button class="belief-monument" data-belief="${b.system_id}"><span class="monument-sigil" aria-hidden="true">✺</span><strong>${esc(chineseName(b.Name))}</strong><span class="monument-title">${esc(chineseName(b.Title))}</span><span class="monument-rule" aria-hidden="true">✦</span></button>`;
+}
+function backgroundView(r) {
+  const bg = find('background', r.Background);
+  return `<div class="background-heading"><span>✥</span><div class="eyebrow">ROOTS · BELIEFS · STORY</div><h2>背景與來歷</h2></div><section class="background-index"><h3>出身 Origin</h3><div class="chips"><button class="chip origin-chip" data-origin="${esc(r.Background)}">⌖ ${esc(chineseName(bg.Name) || '未指定出身')} ↗</button></div><h3>信仰 Belief</h3><div class="chips">${
+    ids(r.Beliefs)
+      .map(
+        (id) =>
+          `<button class="chip belief-chip" data-belief="${esc(id)}">❖ ${esc(chineseName(find('beliefs', id).Name))} ↗</button>`,
+      )
+      .join('') || '<small class="muted">尚未指定信仰</small>'
+  }</div><small class="muted">點選標籤，在右側閱讀來歷與信仰。</small></section><section class="story-section"><h3 class="chapter-title">角色故事 Story</h3><div class="prose">${esc(storyText(r) || '尚未填寫背景故事')}</div></section>`;
+}
+function schoolDetail(id) {
+  const x = find('school', id),
+    cl = find('class', x.Class);
+  detailLayout(
+    x['School Name (Chinese)'],
+    x['School Name (English)'],
+    `<div class="detail-fields">${field('職業 Class', cl['Class Name (Chinese)'])}${field('信仰 Belief', find('beliefs', x.Belief).Name)}</div>${detailSection('理念', x.Title)}${detailSection('法源道介紹', x.Desc)}${x.Passive ? detailSection('被動能力', x.Passive) : ''}`,
+  );
+  paintLore($('#detail'), schoolKey(id));
+}
+function classDetail(id) {
+  const x = find('class', id);
+  detailLayout(
+    x['Class Name (Chinese)'],
+    x['Class Name (English)'],
+    `${detailSection('職業定位', x['Short Desc'])}${detailSection('職業介紹', x['Class Desc'])}`,
+  );
+  paintLore($('#detail'), classKeys(id));
+}
+function spellDetail(x) {
+  const school = find('school', x.School),
+    cl = find('class', school.Class);
+  detailLayout(
+    x['Spell Name (Chinese)'],
+    x['Spell Name (English)'],
+    `<div class="detail-fields">${field('職業 Class', cl['Class Name (Chinese)'])}${field('法源道 School', school['School Name (Chinese)'])}${field('行動類型 Action', x['Action Type'])}${field('目標／範圍 Target', x.Target)}</div>${detailSection('法術效果 Description', x['Spell Desc'])}`,
+  );
+  paintLore($('#detail'), schoolKey(x.School));
+}
+function weaponDetail(w) {
+  detailLayout(
+    w['Weapon Name'],
+    '',
+    `<div class="detail-fields">${field('武器類型 Type', w['Weapon Type'])}${field('傷害 Damage', w.Damage)}</div>${detailSection('武器效果 Effect', w.Effect)}`,
+  );
+}
+function bindDetails() {
+  $$('[data-origin]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        activate(b);
+        originDetail(b.dataset.origin);
+      }),
+  );
+  $$('[data-belief]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        activate(b);
+        beliefDetail(b.dataset.belief);
+      }),
+  );
+  $$('[data-spell]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        activate(b);
+        spellDetail(find('spell', b.dataset.spell));
+      }),
+  );
+  $$('[data-weapon]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        activate(b);
+        weaponDetail(find('weapon', b.dataset.weapon));
+      }),
+  );
+  $$('[data-school]').forEach((b) => (b.onclick = () => schoolDetail(b.dataset.school)));
+  $$('[data-class]').forEach((b) => (b.onclick = () => classDetail(b.dataset.class)));
+}
+function wireDetails() {
+  bindDetails();
+  applyLoreColours();
+}
+function activate(b) {
+  $$('.chip.selected').forEach((x) => x.classList.remove('selected'));
+  b.classList.add('selected');
+}
 // A character's mandatory spell is determined by their school, while codex entries use each school's definition.
-function spellTags(rows,coreId){return rows.map(x=>{const core=x.system_id===(coreId===undefined?find('school',x.School)['Main Spell']:coreId);return `<button class="chip spell-chip ${core?'core-spell':''}" data-spell="${esc(x.system_id)}">${core?'✦':'✧'} <span>${esc(x['Spell Name (Chinese)'])}</span>${core?'<small class="core-badge">核心</small>':''}</button>`}).join('')||'<small class="muted">尚未選擇法術</small>'}
-const weaponGroups=[['主武器','main','⚔'],['重型武器','heavy','⚒'],['副武器','sidearm','➶'],['非武器','support','⬡']];
-function weaponKind(w){return weaponGroups.find(([label])=>w['Weapon Type']?.startsWith(label))||['其他','other','◇']}
-function weaponTag(w){const [label,key,glyph]=weaponKind(w);return `<button class="chip weapon-chip weapon-${key}" data-weapon="${w.system_id}">${glyph} <span>${esc(w['Weapon Name'])}</span><small class="weapon-kind">${label}</small></button>`}
-function groupedWeapons(rows){return weaponGroups.map(([label,key,glyph])=>{const items=rows.filter(w=>weaponKind(w)[1]===key);return items.length?`<section class="equipped-group weapon-group-${key}"><h4>${glyph} ${label}</h4><div class="chips">${items.map(weaponTag).join('')}</div></section>`:''}).join('')||'<small class="muted">尚未裝備武器</small>'}
-function dashboard(r,s){const cl=find('class',r.Class),school=find('school',r.School);$('#content').innerHTML=`<div class="folio-heading"><div><span class="eyebrow">READY FOR ADVENTURE</span><h2>冒險裝備</h2></div><span class="seal">${esc(r.Level)}<small>LEVEL</small></span></div>${identityCards(r)}<h3 class="stat-label">六項屬性</h3>${attributes(r)}<section class="loadout-block"><div class="row"><h3><i class="marker violet"></i>法術 Spell</h3><small>已學 ${ids(r.Spells).length} / ${esc(r['Available Spell Slots'])}</small></div><div class="chips">${spellTags(data.spell.filter(x=>ids(r.Spells).includes(x.system_id)),school['Main Spell'])}</div></section><section class="loadout-block"><h3><i class="marker amber"></i>武器 Weapon</h3>${groupedWeapons(data.weapon.filter(w=>ids(r.Weapons).includes(w.system_id)))}</section><section class="loadout-block"><h3><i class="marker teal"></i>職業能力</h3><div class="chips">${Array.from({length:+r.Level},(_,i)=>({level:i+1,body:cl[`Level ${i+1} Perk`]})).filter(x=>x.body).map(x=>`<button class="chip perk-chip" data-perk="${x.level}">❖ 等級 ${x.level} 能力</button>`).join('')||'<small class="muted">已達等級的能力資料尚未填寫</small>'}</div></section><div class="campaign-tools"><section class="notebook"><h3>▣ 背包</h3><textarea id="inventory" rows="5" aria-label="背包" placeholder="裝備、道具與旅途所得…">${esc(s.inventory)}</textarea></section><section class="notebook"><div class="row"><h3>✎ 一般筆記</h3><button class="text-button" id="journalLink">場次日誌 ↗</button></div><textarea id="general" rows="5" aria-label="一般筆記" placeholder="線索、待辦與長期備忘…">${esc(s.general)}</textarea></section></div><div class="session-strip"><div><small>冒險日誌</small><p>為這次旅程留下一頁。</p></div><button id="newSession">＋ 新增</button><button id="resumeSession">繼續最近筆記</button></div>`;
-wireDetails();$$('[data-perk]').forEach(b=>b.onclick=()=>showDetail(`等級 ${b.dataset.perk} · ${cl['Class Name (Chinese)']}`,cl['Class Name (English)'],cl[`Level ${b.dataset.perk} Perk`]));for(const key of ['inventory','general'])$('#'+key).oninput=e=>{s[key]=e.target.value;persist()};$('#journalLink').onclick=()=>navigate('日誌');$('#newSession').onclick=()=>openNote();$('#resumeSession').onclick=()=>openNote((state.notes[selected]||[]).at(-1)?.id);}
-let teammate=null,teamTab='數值';
-function team(){if(!teammate)teammate=characters[0].system_id;const c=find('character',teammate),st=stateFor(teammate),cl=find('class',c.Class);$('#content').innerHTML=`<div class="eyebrow">PARTY · 唯讀角色卡</div><h2>同行之人</h2><div class="party-picker">${characters.map(x=>`<button class="party-token ${x.system_id===teammate?'chosen':''}" data-teammate="${x.system_id}"><span>${esc(x['Character Name'].slice(0,1))}</span><div>${esc(x['Character Name'])}<small>Lv.${esc(x.Level)} · ${esc(find('class',x.Class)['Class Name (Chinese)'])}</small></div></button>`).join('')}</div><section class="team-sheet"><div class="row"><h2>${esc(c['Character Name'])}</h2><span class="tag">唯讀</span></div><div class="tabs"><button id="teamStats" class="${teamTab==='數值'?'active':''}">角色數值</button><button id="teamBackground" class="${teamTab==='背景'?'active':''}">背景 Background</button></div>${teamTab==='背景'?backgroundView(c):`<div class="team-vitals"><div><span class="vital-sigil" aria-hidden="true">❖</span><small>生命 HP</small><strong>${st.hp} <em>/ ${esc(c['Max Health'])}</em></strong></div><div><span class="vital-sigil" aria-hidden="true">⬡</span><small>臨時生命</small><strong>${st.temp}</strong></div><div><span class="vital-sigil" aria-hidden="true">✧</span><small>意志</small><strong>${st.will} <em>/ ${esc(c['Max Willpower'])}</em></strong></div></div>${combatStats(c)}${attributes(c)}<p class="muted">待結算傷口：${st.wounds.length} 筆${st.wounds.length?' · '+st.wounds.reduce((a,b)=>a+b,0)+' 傷害':''}</p><div class="identity-links"><button data-class="${esc(c.Class)}">${esc(cl['Class Name (Chinese)'])}</button><button data-school="${esc(c.School)}">${esc(find('school',c.School)['School Name (Chinese)'])}</button></div><h3>法術 Spell</h3><div class="chips">${spellTags(data.spell.filter(x=>ids(c.Spells).includes(x.system_id)),find('school',c.School)['Main Spell'])}</div><h3>武器 Weapon</h3>${groupedWeapons(data.weapon.filter(w=>ids(c.Weapons).includes(w.system_id)))}<small class="muted">背包與私人筆記不顯示於隊伍角色卡。</small>`}</section>`;
-$$('[data-teammate]').forEach(b=>b.onclick=()=>{teammate=b.dataset.teammate;team()});$('#teamStats').onclick=()=>{teamTab='數值';team()};$('#teamBackground').onclick=()=>{teamTab='背景';team()};wireDetails();}
-let codexClass=null;
-const classGlyphs=['⚔','◈','☼','⚒','➶','◆','♜','⚙','✺'];
-function schoolCodex(){if(!codexClass)codexClass=find('character',selected).Class;$('#content').innerHTML=`<div class="codex-cover"><div class="codex-orbit">✺</div><span class="eyebrow">THE ORIAN ARCHIVE</span><h2>萬道典藏</h2><p>同一世界，萬千意志。<br>循職業尋道，從法術窺見信仰。</p><div class="cover-rule">✦ ─── ✧ ─── ✦</div></div><input id="codexSearch" placeholder="搜尋職業、法源道或法術…" aria-label="搜尋典籍"><div id="classShelf"></div><div id="codexGroups"></div>`;
-const paint=()=>{const q=$('#codexSearch').value.trim().toLowerCase();$('#classShelf').innerHTML=`<div class="class-shelf archive-monuments">${data.class.map((cl,i)=>`<button class="class-volume ${cl.system_id===codexClass?'chosen':''}" data-volume="${cl.system_id}" style="--volume-tone:${['#b99d73','#98bfa2','#c2a1cd','#d19b78','#a6b99b','#91b6c8','#c69e9e','#a9a4ce','#c9ba82'][i]}"><span>${classGlyphs[i]}</span><strong>${esc(cl['Class Name (Chinese)'])}</strong></button>`).join('')}</div>`;$('#codexGroups').innerHTML=data.class.filter(cl=>q||cl.system_id===codexClass).map(cl=>{const classMatch=(cl['Class Name (Chinese)']+cl['Class Name (English)']).toLowerCase().includes(q);const schools=data.school.filter(sc=>sc.Class===cl.system_id).map(sc=>{const schoolMatch=(sc['School Name (Chinese)']+sc['School Name (English)']).toLowerCase().includes(q);const rows=data.spell.filter(sp=>sp.School===sc.system_id&&(classMatch||schoolMatch||(sp['Spell Name (Chinese)']+sp['Spell Name (English)']+sp['Spell Desc']).toLowerCase().includes(q)));return !q||classMatch||schoolMatch||rows.length?`<section class="school-page"><div class="school-crest">${classGlyphs[data.class.indexOf(cl)]}</div><div class="school-page-body"><div class="row"><button class="school-title" data-school="${sc.system_id}">${esc(sc['School Name (Chinese)'])} ↗</button><small>${rows.length} 法術</small></div><p class="school-motto">${esc(sc.Title||'此道的故事，尚待續寫。')}</p><div class="chips">${rows.length?spellTags(rows):'<small class="muted">尚未收錄法術</small>'}</div></div></section>`:''}).join('');return schools?`<section class="codex-chapter"><div class="chapter-banner"><span>${classGlyphs[data.class.indexOf(cl)]}</span><div><small>職業 Class</small><h3>${esc(cl['Class Name (Chinese)'])}</h3><p>${esc(cl['Short Desc']||'')}</p></div><button data-class="${cl.system_id}">職業介紹 ↗</button></div>${schools}</section>`:''}).join('')||'<div class="empty">找不到符合條件的項目</div>';$$('[data-volume]').forEach(b=>b.onclick=()=>{codexClass=b.dataset.volume;$('#codexSearch').value='';paint()});wireDetails()};$('#codexSearch').oninput=paint;paint()}
+function spellTags(rows, coreId) {
+  return (
+    rows
+      .map((x) => {
+        const core =
+          x.system_id === (coreId === undefined ? find('school', x.School)['Main Spell'] : coreId);
+        return `<button class="chip spell-chip ${core ? 'core-spell' : ''}" data-spell="${esc(x.system_id)}">${core ? '✦' : '✧'} <span>${esc(x['Spell Name (Chinese)'])}</span>${core ? '<small class="core-badge">核心</small>' : ''}</button>`;
+      })
+      .join('') || '<small class="muted">尚未選擇法術</small>'
+  );
+}
+const weaponGroups = [
+  ['主武器', 'main', '⚔'],
+  ['重型武器', 'heavy', '⚒'],
+  ['副武器', 'sidearm', '➶'],
+  ['非武器', 'support', '⬡'],
+];
+function weaponKind(w) {
+  return (
+    weaponGroups.find(([label]) => w['Weapon Type']?.startsWith(label)) || ['其他', 'other', '◇']
+  );
+}
+function weaponTag(w) {
+  const [label, key, glyph] = weaponKind(w);
+  return `<button class="chip weapon-chip weapon-${key}" data-weapon="${w.system_id}">${glyph} <span>${esc(w['Weapon Name'])}</span><small class="weapon-kind">${label}</small></button>`;
+}
+function groupedWeapons(rows) {
+  return (
+    weaponGroups
+      .map(([label, key, glyph]) => {
+        const items = rows.filter((w) => weaponKind(w)[1] === key);
+        return items.length
+          ? `<section class="equipped-group weapon-group-${key}"><h4>${glyph} ${label}</h4><div class="chips">${items.map(weaponTag).join('')}</div></section>`
+          : '';
+      })
+      .join('') || '<small class="muted">尚未裝備武器</small>'
+  );
+}
+function dashboard(r, s) {
+  const cl = find('class', r.Class),
+    school = find('school', r.School);
+  $('#content').innerHTML =
+    `<div class="folio-heading"><div><span class="eyebrow">READY FOR ADVENTURE</span><h2>冒險裝備</h2></div><span class="seal">${esc(r.Level)}<small>LEVEL</small></span></div>${identityCards(r)}<h3 class="stat-label">六項屬性</h3>${attributes(r)}<section class="loadout-block"><div class="row"><h3><i class="marker violet"></i>法術 Spell</h3><small>已學 ${ids(r.Spells).length} / ${esc(r['Available Spell Slots'])}</small></div><div class="chips">${spellTags(
+      data.spell.filter((x) => ids(r.Spells).includes(x.system_id)),
+      school['Main Spell'],
+    )}</div></section><section class="loadout-block"><h3><i class="marker amber"></i>武器 Weapon</h3>${groupedWeapons(data.weapon.filter((w) => ids(r.Weapons).includes(w.system_id)))}</section><section class="loadout-block"><h3><i class="marker teal"></i>職業能力</h3><div class="chips">${
+      Array.from({ length: +r.Level }, (_, i) => ({
+        level: i + 1,
+        body: cl[`Level ${i + 1} Perk`],
+      }))
+        .filter((x) => x.body)
+        .map(
+          (x) =>
+            `<button class="chip perk-chip" data-perk="${x.level}">❖ 等級 ${x.level} 能力</button>`,
+        )
+        .join('') || '<small class="muted">已達等級的能力資料尚未填寫</small>'
+    }</div></section><div class="campaign-tools"><section class="notebook"><h3>▣ 背包</h3><textarea id="inventory" rows="5" aria-label="背包" placeholder="裝備、道具與旅途所得…">${esc(s.inventory)}</textarea></section><section class="notebook"><div class="row"><h3>✎ 一般筆記</h3><button class="text-button" id="journalLink">場次日誌 ↗</button></div><textarea id="general" rows="5" aria-label="一般筆記" placeholder="線索、待辦與長期備忘…">${esc(s.general)}</textarea></section></div><div class="session-strip"><div><small>冒險日誌</small><p>為這次旅程留下一頁。</p></div><button id="newSession">＋ 新增</button><button id="resumeSession">繼續最近筆記</button></div>`;
+  wireDetails();
+  $$('[data-perk]').forEach(
+    (b) =>
+      (b.onclick = () =>
+        showDetail(
+          `等級 ${b.dataset.perk} · ${cl['Class Name (Chinese)']}`,
+          cl['Class Name (English)'],
+          cl[`Level ${b.dataset.perk} Perk`],
+        )),
+  );
+  for (const key of ['inventory', 'general'])
+    $('#' + key).oninput = (e) => {
+      s[key] = e.target.value;
+      queuePrivate(selected, key, e.target.value);
+    };
+  $('#journalLink').onclick = () => navigate('日誌');
+  $('#newSession').onclick = () => openNote();
+  $('#resumeSession').onclick = () => openNote((state.notes[selected] || []).at(-1)?.id);
+}
+let teammate = null,
+  teamTab = '數值';
+function team() {
+  if (!teammate) teammate = characters[0].system_id;
+  const c = find('character', teammate),
+    st = stateFor(teammate),
+    cl = find('class', c.Class);
+  $('#content').innerHTML =
+    `<div class="eyebrow">PARTY · 唯讀角色卡</div><h2>同行之人</h2><div class="party-picker">${characters.map((x) => `<button class="party-token ${x.system_id === teammate ? 'chosen' : ''}" data-teammate="${x.system_id}"><span>${esc(x['Character Name'].slice(0, 1))}</span><div>${esc(x['Character Name'])}<small>Lv.${esc(x.Level)} · ${esc(find('class', x.Class)['Class Name (Chinese)'])}</small></div></button>`).join('')}</div><section class="team-sheet"><div class="row"><h2>${esc(c['Character Name'])}</h2><span class="tag">唯讀</span></div><div class="tabs"><button id="teamStats" class="${teamTab === '數值' ? 'active' : ''}">角色數值</button><button id="teamBackground" class="${teamTab === '背景' ? 'active' : ''}">背景 Background</button></div>${
+      teamTab === '背景'
+        ? backgroundView(c)
+        : `<div class="team-vitals"><div><span class="vital-sigil" aria-hidden="true">❖</span><small>生命 HP</small><strong>${st.hp} <em>/ ${esc(c['Max Health'])}</em></strong></div><div><span class="vital-sigil" aria-hidden="true">⬡</span><small>臨時生命</small><strong>${st.temp}</strong></div><div><span class="vital-sigil" aria-hidden="true">✧</span><small>意志</small><strong>${st.will} <em>/ ${esc(c['Max Willpower'])}</em></strong></div></div>${combatStats(c)}${attributes(c)}<p class="muted">待結算傷口：${st.wounds.length} 筆${st.wounds.length ? ' · ' + st.wounds.reduce((a, b) => a + b, 0) + ' 傷害' : ''}</p><div class="identity-links"><button data-class="${esc(c.Class)}">${esc(cl['Class Name (Chinese)'])}</button><button data-school="${esc(c.School)}">${esc(find('school', c.School)['School Name (Chinese)'])}</button></div><h3>法術 Spell</h3><div class="chips">${spellTags(
+            data.spell.filter((x) => ids(c.Spells).includes(x.system_id)),
+            find('school', c.School)['Main Spell'],
+          )}</div><h3>武器 Weapon</h3>${groupedWeapons(data.weapon.filter((w) => ids(c.Weapons).includes(w.system_id)))}<small class="muted">背包與私人筆記不顯示於隊伍角色卡。</small>`
+    }</section>`;
+  $$('[data-teammate]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        teammate = b.dataset.teammate;
+        team();
+      }),
+  );
+  $('#teamStats').onclick = () => {
+    teamTab = '數值';
+    team();
+  };
+  $('#teamBackground').onclick = () => {
+    teamTab = '背景';
+    team();
+  };
+  wireDetails();
+}
+let codexClass = null;
+const classGlyphs = ['⚔', '◈', '☼', '⚒', '➶', '◆', '♜', '⚙', '✺'];
+function schoolCodex() {
+  if (!codexClass) codexClass = find('character', selected).Class;
+  $('#content').innerHTML =
+    `<div class="codex-cover"><div class="codex-orbit">✺</div><span class="eyebrow">THE ORIAN ARCHIVE</span><h2>萬道典藏</h2><p>同一世界，萬千意志。<br>循職業尋道，從法術窺見信仰。</p><div class="cover-rule">✦ ─── ✧ ─── ✦</div></div><input id="codexSearch" placeholder="搜尋職業、法源道或法術…" aria-label="搜尋典籍"><div id="classShelf"></div><div id="codexGroups"></div>`;
+  const paint = () => {
+    const q = $('#codexSearch').value.trim().toLowerCase();
+    $('#classShelf').innerHTML =
+      `<div class="class-shelf archive-monuments">${data.class.map((cl, i) => `<button class="class-volume ${cl.system_id === codexClass ? 'chosen' : ''}" data-volume="${cl.system_id}" style="--volume-tone:${['#b99d73', '#98bfa2', '#c2a1cd', '#d19b78', '#a6b99b', '#91b6c8', '#c69e9e', '#a9a4ce', '#c9ba82'][i]}"><span>${classGlyphs[i]}</span><strong>${esc(cl['Class Name (Chinese)'])}</strong></button>`).join('')}</div>`;
+    $('#codexGroups').innerHTML =
+      data.class
+        .filter((cl) => q || cl.system_id === codexClass)
+        .map((cl) => {
+          const classMatch = (cl['Class Name (Chinese)'] + cl['Class Name (English)'])
+            .toLowerCase()
+            .includes(q);
+          const schools = data.school
+            .filter((sc) => sc.Class === cl.system_id)
+            .map((sc) => {
+              const schoolMatch = (sc['School Name (Chinese)'] + sc['School Name (English)'])
+                .toLowerCase()
+                .includes(q);
+              const rows = data.spell.filter(
+                (sp) =>
+                  sp.School === sc.system_id &&
+                  (classMatch ||
+                    schoolMatch ||
+                    (sp['Spell Name (Chinese)'] + sp['Spell Name (English)'] + sp['Spell Desc'])
+                      .toLowerCase()
+                      .includes(q)),
+              );
+              return !q || classMatch || schoolMatch || rows.length
+                ? `<section class="school-page"><div class="school-crest">${classGlyphs[data.class.indexOf(cl)]}</div><div class="school-page-body"><div class="row"><button class="school-title" data-school="${sc.system_id}">${esc(sc['School Name (Chinese)'])} ↗</button><small>${rows.length} 法術</small></div><p class="school-motto">${esc(sc.Title || '此道的故事，尚待續寫。')}</p><div class="chips">${rows.length ? spellTags(rows) : '<small class="muted">尚未收錄法術</small>'}</div></div></section>`
+                : '';
+            })
+            .join('');
+          return schools
+            ? `<section class="codex-chapter"><div class="chapter-banner"><span>${classGlyphs[data.class.indexOf(cl)]}</span><div><small>職業 Class</small><h3>${esc(cl['Class Name (Chinese)'])}</h3><p>${esc(cl['Short Desc'] || '')}</p></div><button data-class="${cl.system_id}">職業介紹 ↗</button></div>${schools}</section>`
+            : '';
+        })
+        .join('') || '<div class="empty">找不到符合條件的項目</div>';
+    $$('[data-volume]').forEach(
+      (b) =>
+        (b.onclick = () => {
+          codexClass = b.dataset.volume;
+          $('#codexSearch').value = '';
+          paint();
+        }),
+    );
+    wireDetails();
+  };
+  $('#codexSearch').oninput = paint;
+  paint();
+}
 
 // All archive categories use the shared inspector; tabs only select a catalogue.
-let archiveTab='職業與法源道';
-function codex(){schoolCodex();const labels=['職業與法源道','出身','信仰','武器'];const tabs=`<div class="archive-tabs" role="tablist" aria-label="典籍分類">${labels.map(label=>`<button role="tab" aria-selected="${label===archiveTab}" data-archive="${label}" class="${label===archiveTab?'active':''}">${label}</button>`).join('')}</div>`;if(archiveTab==='職業與法源道')$('.codex-cover').insertAdjacentHTML('afterend',tabs);else{const cover=$('.codex-cover').outerHTML;$('#content').innerHTML=cover+tabs+`<div class="catalog-heading"><h3>${archiveTab==='出身'?'大陸來歷':archiveTab==='信仰'?'諸般信仰':'兵器錄'}</h3><small>點選條目閱讀詳情</small></div><input id="catalogSearch" aria-label="搜尋${archiveTab}" placeholder="搜尋${archiveTab}…"><div id="catalogItems"></div>`;const paint=()=>{const q=$('#catalogSearch').value.trim().toLowerCase();const records=archiveTab==='出身'?data.background:archiveTab==='信仰'?data.beliefs:data.weapon;const groups=new Map();records.filter(r=>JSON.stringify(r).toLowerCase().includes(q)).forEach(r=>{const group=archiveTab==='出身'?r['Main Branch']:archiveTab==='武器'?weaponKind(r)[0]:'信仰 Belief';if(!groups.has(group))groups.set(group,[]);groups.get(group).push(r)});$('#catalogItems').innerHTML=[...groups].map(([group,rows])=>`<section class="catalog-group ${archiveTab==='信仰'?'belief-gallery':archiveTab==='武器'?'weapon-catalog weapon-group-'+weaponKind(rows[0])[1]:''}"><h3>${esc(group||'其他')}</h3><div class="${archiveTab==='信仰'?'belief-grid':archiveTab==='武器'?'chips':'archive-grid'}">${rows.map(r=>archiveTab==='出身'?`<button class="archive-tablet origin-tablet" data-origin="${r.system_id}"><span class="tablet-sigil">⌖</span><strong>${esc(chineseName(r.Name))}</strong><small>${esc(chineseName(r['Main Branch']||'來歷未記'))}</small><span class="tablet-rule">✦ ── ✦</span></button>`:archiveTab==='信仰'?beliefTile(r):weaponTag(r)).join('')}</div></section>`).join('')||'<div class="empty">沒有符合的條目</div>';wireDetails()};$('#catalogSearch').oninput=paint;paint()}$$('[data-archive]').forEach(b=>b.onclick=()=>{archiveTab=b.dataset.archive;codex()})}
-function journal(){const notes=state.notes[selected]||[];$('#content').innerHTML=`<div class="row"><div><span class="eyebrow">YOUR CHRONICLE</span><h2>冒險日誌</h2></div><button id="newnote">＋ 新增筆記</button></div><input id="noteSearch" placeholder="搜尋場次筆記" aria-label="搜尋場次筆記"><div id="noteList"></div>`;const paint=()=>{$('#noteList').innerHTML=notes.filter(n=>(n.title+n.body+n.date).includes($('#noteSearch').value)).slice().reverse().map(n=>`<button class="journal-card" data-note="${n.id}"><small>${esc(n.date)}</small><h3>${esc(n.title||'未命名場次')}</h3><div class="summary">${esc(n.body||'尚未寫下內容')}</div></button>`).join('')||'<div class="empty">每次冒險，都值得留下紀錄。<br>新增你的第一篇場次筆記。</div>';$$('[data-note]').forEach(b=>b.onclick=()=>openNote(b.dataset.note))};$('#noteSearch').oninput=paint;$('#newnote').onclick=()=>openNote();paint()}
-function navigate(next){page=next;$$('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));render()}
-function render(){if(!selected){$('#content').textContent='目前沒有角色';return}status();$('#title').textContent=page==='角色'?'冒險者手札':page==='日誌'?'旅途紀錄':page==='隊伍'?'隊伍角色卡':'世界典籍';$('#tabs').innerHTML='';const r=find('character',selected),s=current();if(page==='角色'){$('#tabs').innerHTML=`<button data-view="冒險裝備" class="${tab==='冒險裝備'?'active':''}">冒險裝備</button><button data-view="背景" class="${tab==='背景'?'active':''}">背景 Background</button>`;$$('[data-view]').forEach(b=>b.onclick=()=>{tab=b.dataset.view;render()});if(tab==='背景')$('#content').innerHTML=backgroundView(r);else dashboard(r,s)}if(page==='典籍')codex();if(page==='隊伍')team();if(page==='日誌')journal();wireDetails()}
-function openNote(id){const list=state.notes[selected]??=[];editing=list.find(n=>n.id===id);if(!editing){editing={id:(crypto.randomUUID?.()||Date.now().toString(36)+Math.random().toString(36).slice(2)),title:'',body:'',date:new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-'+String(new Date().getDate()).padStart(2,'0')};list.push(editing);persist()}$('#noteTitle').value=editing.title;$('#noteBody').value=editing.body;$('#noteDate').value=editing.date;$('#editor').showModal();}
-for(const [sel,key]of [['#noteTitle','title'],['#noteBody','body'],['#noteDate','date']])$(sel).oninput=e=>{editing[key]=e.target.value;$('#noteSave').textContent=persist()?'✓ 本機已儲存':'儲存失敗，請勿關閉頁面'};
-$('#editor').onclose=()=>render();$('#deleteNote').onclick=()=>{if(!confirm('刪除此篇場次筆記？'))return;state.notes[selected]=state.notes[selected].filter(n=>n.id!==editing.id);persist();$('#editor').close()};$('#quicknote').onclick=()=>openNote();$('#character').innerHTML=characters.map(c=>`<option value="${esc(c.system_id)}">${esc(c['Character Name'])}</option>`).join('');$('#character').onchange=e=>{selected=e.target.value;undo=null;render();showDetail('角色已切換','','點選法術、武器、職業或法源道，完整內容會固定在這裡。')};$('#campaign').textContent=campaign?.['Campaign Name (Chinese)']||'沒有啟用戰役';$$('[data-page]').forEach(b=>b.onclick=()=>{navigate(b.dataset.page)});
-const themes={blue:['#14191d','#202a2e','#293439','#46504b','#d9bd7b','#29433d'],sand:['#191614','#231f1a','#30291f','#494031','#d6b78b','#493821'],forest:['#101916','#18241e','#203329','#354b3d','#93c6ab','#204533'],ice:['#10191e','#17252d','#20323d','#344e5b','#9bd4e6','#214654'],star:['#15121f','#211c30','#2c253e','#443655','#b9a1ed','#3b285c']};$('#theme').onchange=()=>{document.documentElement.dataset.theme=$('#theme').value;const a=themes[$('#theme').value];['--bg','--panel','--card','--line','--accent','--glow'].forEach((k,i)=>document.documentElement.style.setProperty(k,a[i]));try{localStorage.setItem('oria-theme',$('#theme').value)}catch{}};try{$('#theme').value=localStorage.getItem('oria-theme')||'blue'}catch{}$('#theme').onchange();render();
+let archiveTab = '職業與法源道';
+function codex() {
+  schoolCodex();
+  const labels = ['職業與法源道', '出身', '信仰', '武器'];
+  const tabs = `<div class="archive-tabs" role="tablist" aria-label="典籍分類">${labels.map((label) => `<button role="tab" aria-selected="${label === archiveTab}" data-archive="${label}" class="${label === archiveTab ? 'active' : ''}">${label}</button>`).join('')}</div>`;
+  if (archiveTab === '職業與法源道') $('.codex-cover').insertAdjacentHTML('afterend', tabs);
+  else {
+    const cover = $('.codex-cover').outerHTML;
+    $('#content').innerHTML =
+      cover +
+      tabs +
+      `<div class="catalog-heading"><h3>${archiveTab === '出身' ? '大陸來歷' : archiveTab === '信仰' ? '諸般信仰' : '兵器錄'}</h3><small>點選條目閱讀詳情</small></div><input id="catalogSearch" aria-label="搜尋${archiveTab}" placeholder="搜尋${archiveTab}…"><div id="catalogItems"></div>`;
+    const paint = () => {
+      const q = $('#catalogSearch').value.trim().toLowerCase();
+      const records =
+        archiveTab === '出身'
+          ? data.background
+          : archiveTab === '信仰'
+            ? data.beliefs
+            : data.weapon;
+      const groups = new Map();
+      records
+        .filter((r) => JSON.stringify(r).toLowerCase().includes(q))
+        .forEach((r) => {
+          const group =
+            archiveTab === '出身'
+              ? r['Main Branch']
+              : archiveTab === '武器'
+                ? weaponKind(r)[0]
+                : '信仰 Belief';
+          if (!groups.has(group)) groups.set(group, []);
+          groups.get(group).push(r);
+        });
+      $('#catalogItems').innerHTML =
+        [...groups]
+          .map(
+            ([group, rows]) =>
+              `<section class="catalog-group ${archiveTab === '信仰' ? 'belief-gallery' : archiveTab === '武器' ? 'weapon-catalog weapon-group-' + weaponKind(rows[0])[1] : ''}"><h3>${esc(group || '其他')}</h3><div class="${archiveTab === '信仰' ? 'belief-grid' : archiveTab === '武器' ? 'chips' : 'archive-grid'}">${rows.map((r) => (archiveTab === '出身' ? `<button class="archive-tablet origin-tablet" data-origin="${r.system_id}"><span class="tablet-sigil">⌖</span><strong>${esc(chineseName(r.Name))}</strong><small>${esc(chineseName(r['Main Branch'] || '來歷未記'))}</small><span class="tablet-rule">✦ ── ✦</span></button>` : archiveTab === '信仰' ? beliefTile(r) : weaponTag(r))).join('')}</div></section>`,
+          )
+          .join('') || '<div class="empty">沒有符合的條目</div>';
+      wireDetails();
+    };
+    $('#catalogSearch').oninput = paint;
+    paint();
+  }
+  $$('[data-archive]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        archiveTab = b.dataset.archive;
+        codex();
+      }),
+  );
+}
+function journal() {
+  const notes = state.notes[selected] || [];
+  $('#content').innerHTML =
+    `<div class="row"><div><span class="eyebrow">YOUR CHRONICLE</span><h2>冒險日誌</h2></div><button id="newnote">＋ 新增筆記</button></div><input id="noteSearch" placeholder="搜尋場次筆記" aria-label="搜尋場次筆記"><div id="noteList"></div>`;
+  const paint = () => {
+    $('#noteList').innerHTML =
+      notes
+        .filter((n) => (n.title + n.body + n.date).includes($('#noteSearch').value))
+        .slice()
+        .reverse()
+        .map(
+          (n) =>
+            `<button class="journal-card" data-note="${n.id}"><small>${esc(n.date)}</small><h3>${esc(n.title || '未命名場次')}</h3><div class="summary">${esc(n.body || '尚未寫下內容')}</div></button>`,
+        )
+        .join('') ||
+      '<div class="empty">每次冒險，都值得留下紀錄。<br>新增你的第一篇場次筆記。</div>';
+    $$('[data-note]').forEach((b) => (b.onclick = () => openNote(b.dataset.note)));
+  };
+  $('#noteSearch').oninput = paint;
+  $('#newnote').onclick = () => openNote();
+  paint();
+}
+function navigate(next) {
+  page = next;
+  $$('[data-page]').forEach((b) => b.classList.toggle('active', b.dataset.page === page));
+  render();
+}
+function render() {
+  if (!selected) {
+    $('#content').textContent = '目前沒有角色';
+    return;
+  }
+  status();
+  $('#title').textContent =
+    page === '角色'
+      ? '冒險者手札'
+      : page === '日誌'
+        ? '旅途紀錄'
+        : page === '隊伍'
+          ? '隊伍角色卡'
+          : '世界典籍';
+  $('#tabs').innerHTML = '';
+  const r = find('character', selected),
+    s = current();
+  if (page === '角色') {
+    $('#tabs').innerHTML =
+      `<button data-view="冒險裝備" class="${tab === '冒險裝備' ? 'active' : ''}">冒險裝備</button><button data-view="背景" class="${tab === '背景' ? 'active' : ''}">背景 Background</button>`;
+    $$('[data-view]').forEach(
+      (b) =>
+        (b.onclick = () => {
+          tab = b.dataset.view;
+          render();
+        }),
+    );
+    if (tab === '背景') $('#content').innerHTML = backgroundView(r);
+    else dashboard(r, s);
+  }
+  if (page === '典籍') codex();
+  if (page === '隊伍') team();
+  if (page === '日誌') journal();
+  wireDetails();
+}
+// @live-notes:start
+function openNote(id) {
+  const list = (state.notes[selected] ??= []);
+  editing = list.find((n) => n.id === id);
+  if (!editing) {
+    editing = {
+      id: crypto.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2),
+      title: '',
+      body: '',
+      date:
+        new Date().getFullYear() +
+        '-' +
+        String(new Date().getMonth() + 1).padStart(2, '0') +
+        '-' +
+        String(new Date().getDate()).padStart(2, '0'),
+    };
+    list.push(editing);
+    persist();
+  }
+  $('#noteTitle').value = editing.title;
+  $('#noteBody').value = editing.body;
+  $('#noteDate').value = editing.date;
+  $('#editor').showModal();
+}
+for (const [sel, key] of [
+  ['#noteTitle', 'title'],
+  ['#noteBody', 'body'],
+  ['#noteDate', 'date'],
+])
+  $(sel).oninput = (e) => {
+    editing[key] = e.target.value;
+    $('#noteSave').textContent = persist() ? '✓ 本機已儲存' : '儲存失敗，請勿關閉頁面';
+  };
+$('#editor').onclose = () => render();
+$('#deleteNote').onclick = () => {
+  if (!confirm('刪除此篇場次筆記？')) return;
+  state.notes[selected] = state.notes[selected].filter((n) => n.id !== editing.id);
+  persist();
+  $('#editor').close();
+};
+$('#quicknote').onclick = () => openNote();
+// @live-notes:end
+$('#character').innerHTML = characters
+  .map((c) => `<option value="${esc(c.system_id)}">${esc(c['Character Name'])}</option>`)
+  .join('');
+$('#character').onchange = (e) => {
+  selected = e.target.value;
+  undo = null;
+  render();
+  showDetail('角色已切換', '', '點選法術、武器、職業或法源道，完整內容會固定在這裡。');
+};
+$('#campaign').textContent = campaign?.['Campaign Name (Chinese)'] || '沒有啟用戰役';
+$$('[data-page]').forEach(
+  (b) =>
+    (b.onclick = () => {
+      navigate(b.dataset.page);
+    }),
+);
+const themes = {
+  blue: ['#14191d', '#202a2e', '#293439', '#46504b', '#d9bd7b', '#29433d'],
+  sand: ['#191614', '#231f1a', '#30291f', '#494031', '#d6b78b', '#493821'],
+  forest: ['#101916', '#18241e', '#203329', '#354b3d', '#93c6ab', '#204533'],
+  ice: ['#10191e', '#17252d', '#20323d', '#344e5b', '#9bd4e6', '#214654'],
+  star: ['#15121f', '#211c30', '#2c253e', '#443655', '#b9a1ed', '#3b285c'],
+};
+$('#theme').onchange = () => {
+  document.documentElement.dataset.theme = $('#theme').value;
+  const a = themes[$('#theme').value];
+  ['--bg', '--panel', '--card', '--line', '--accent', '--glow'].forEach((k, i) =>
+    document.documentElement.style.setProperty(k, a[i]),
+  );
+  try {
+    localStorage.setItem('oria-theme', $('#theme').value);
+  } catch {}
+};
+try {
+  $('#theme').value = localStorage.getItem('oria-theme') || 'blue';
+} catch {}
+$('#theme').onchange();
+render();

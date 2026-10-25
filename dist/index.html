@@ -1,1 +1,80 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>法源律令 · 角色控制台</title><link rel="stylesheet" href="style.css"></head><body><header class="archive-banner"><div class="brand"><span class="banner-seal" aria-hidden="true">✦</span><div class="brand-inscription"><small>ORIA’S DECREE</small><strong>法源律令</strong><span class="brand-rule" aria-hidden="true">✧ ───── ✧</span></div></div><nav aria-label="主要導覽"><button data-page="角色" class="active">我的角色</button><button data-page="隊伍">隊伍</button><button data-page="典籍">典籍</button><button data-page="日誌">冒險日誌</button></nav><select id="theme" aria-label="介面主題"><option value="blue">法源藍</option><option value="sand">沙境</option><option value="forest">森境</option><option value="ice">霜境</option><option value="star">星夜</option></select></header><div class="notice">私人試玩版 · 現有角色資料快照 · 修改只儲存在此瀏覽器，未連接 Google 登入或回寫 Sheets</div><main><div class="heading"><div><div class="campaign-ornament" aria-hidden="true">✦ ── ◇ ── ✦</div><h1 id="campaign"></h1><p id="title">角色控制台</p></div><div class="row"><span id="save" role="status">本機已儲存</span><button id="quicknote">＋ 本場筆記</button><select id="character" aria-label="試玩角色"></select></div></div><section id="workspace"><aside id="status"></aside><article><div id="tabs" class="tabs"></div><div id="content"></div></article><aside id="detail"><div class="eyebrow">規則與故事</div><h2>你的下一個故事</h2><p>點選法術、武器、職業或法源道，在這裡閱讀完整內容。</p><div class="sigil">◇</div></aside></section></main><dialog id="editor"><form method="dialog"><div class="row"><h2>場次筆記</h2><button value="cancel" aria-label="關閉">✕</button></div></form><label>標題<input id="noteTitle" placeholder="這一次的冒險…"></label><label>日期<input id="noteDate" type="date"></label><label>內容<textarea id="noteBody" rows="14" placeholder="記下事件、線索與自己的想法…"></textarea></label><div class="row"><span id="noteSave" role="status">自動儲存於此瀏覽器</span><button id="deleteNote" class="danger">刪除筆記</button></div></dialog><div id="toast" role="status"></div><script type="module" src="app.js"></script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>法源律令 · 角色控制台</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="archive-banner">
+      <div class="brand">
+        <span class="banner-seal" aria-hidden="true">✦</span>
+        <div class="brand-inscription">
+          <small>ORIA’S DECREE</small><strong>法源律令</strong
+          ><span class="brand-rule" aria-hidden="true">✧ ───── ✧</span>
+        </div>
+      </div>
+      <nav aria-label="主要導覽">
+        <button data-page="角色" class="active">我的角色</button
+        ><button data-page="隊伍">隊伍</button><button data-page="典籍">典籍</button
+        ><button data-page="日誌">冒險日誌</button>
+      </nav>
+      <select id="theme" aria-label="介面主題">
+        <option value="blue">法源藍</option>
+        <option value="sand">沙境</option>
+        <option value="forest">森境</option>
+        <option value="ice">霜境</option>
+        <option value="star">星夜</option>
+      </select>
+    </header>
+    <div class="notice">
+      私人試玩版 · 現有角色資料快照 · 修改只儲存在此瀏覽器，未連接 Google 登入或回寫 Sheets
+    </div>
+    <main>
+      <div class="heading">
+        <div>
+          <div class="campaign-ornament" aria-hidden="true">✦ ── ◇ ── ✦</div>
+          <h1 id="campaign"></h1>
+          <p id="title">角色控制台</p>
+        </div>
+        <div class="row">
+          <span id="save" role="status">本機已儲存</span><button id="quicknote">＋ 本場筆記</button
+          ><select id="character" aria-label="試玩角色"></select>
+        </div>
+      </div>
+      <section id="workspace">
+        <aside id="status"></aside>
+        <article>
+          <div id="tabs" class="tabs"></div>
+          <div id="content"></div>
+        </article>
+        <aside id="detail">
+          <div class="eyebrow">規則與故事</div>
+          <h2>你的下一個故事</h2>
+          <p>點選法術、武器、職業或法源道，在這裡閱讀完整內容。</p>
+          <div class="sigil">◇</div>
+        </aside>
+      </section>
+    </main>
+    <dialog id="editor">
+      <form method="dialog">
+        <div class="row">
+          <h2>場次筆記</h2>
+          <button value="cancel" aria-label="關閉">✕</button>
+        </div>
+      </form>
+      <label>標題<input id="noteTitle" placeholder="這一次的冒險…" /></label
+      ><label>日期<input id="noteDate" type="date" /></label
+      ><label
+        >內容<textarea id="noteBody" rows="14" placeholder="記下事件、線索與自己的想法…"></textarea>
+      </label>
+      <div class="row">
+        <span id="noteSave" role="status">自動儲存於此瀏覽器</span
+        ><button id="deleteNote" class="danger">刪除筆記</button>
+      </div>
+    </dialog>
+    <div id="toast" role="status"></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

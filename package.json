@@ -1,1 +1,15 @@
-{"name":"oria-decree","private":true,"type":"module","scripts":{"dev":"node live/scripts/build.mjs && PORT=4173 node live/scripts/dev.mjs","build:live":"node live/scripts/build.mjs","test":"node --test live/test/*.test.mjs"}}
+{
+  "name": "oria-decree",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node live/scripts/build.mjs && PORT=4173 node live/scripts/dev.mjs",
+    "build:live": "node live/scripts/build.mjs",
+    "test": "node --test live/test/*.test.mjs",
+    "format": "prettier --write \"**/*.{js,mjs,css,html,json,jsonc,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{js,mjs,css,html,json,jsonc,yml,yaml}\""
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  }
+}
