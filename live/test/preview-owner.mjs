@@ -1,8 +1,8 @@
 /** Visual QA only: synthetic, in-memory data; never mounted by the Worker. */
 import http from 'node:http';
 import fs from 'node:fs/promises';
-const html=`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>典藏管理室 · 視覺測試</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/owner-console.css"><body><button id="open">✺ 典藏管理室</button><script type="module" src="/fixture.js"></script></body></html>`;
-const fixture=`import {openOwnerConsole} from '/owner-console.js';
+const html = `<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>典藏管理室 · 視覺測試</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/owner-console.css"><body><button id="open">✺ 典藏管理室</button><script type="module" src="/fixture.js"></script></body></html>`;
+const fixture = `import {openOwnerConsole} from '/owner-console.js';
 const data={owner:{name:'網站擁有者',email:'keeper@example.invalid'},catalog:[],campaigns:[{id:'campaign-demo',name:'法源律令：破門律',name_en:'Oria’s Decree',intro:'同一世界，萬千意志。',active:1,version:0}],members:[{id:'dm',email:'keeper@example.invalid',campaign_id:'campaign-demo',role:'dm',version:0,claimed:1},{id:'player',email:'player@example.invalid',campaign_id:'campaign-demo',role:'player',version:0,claimed:1}],audit:[]};
 function add(kind,id,payload){data.catalog.push({kind,id,payload:{system_id:id,...payload},version:0,archived:0});}
 add('class','ranger',{'Class Name (Chinese)':'游俠','Class Name (English)':'Ranger','Class Desc':'穿梭戰場，窮追猛打。'});
@@ -18,5 +18,35 @@ if(path.endsWith('/archive')){const item=data.catalog.find(x=>x.kind===body.kind
 if(path.endsWith('/member')){const old=data.members.find(x=>x.id===body.id);if(body.role==='reader')data.members=data.members.filter(x=>x!==old);else if(old){old.role=body.role;old.version++;}else data.members.push({id:'member-'+Date.now(),email:body.email,campaign_id:body.campaignId,role:body.role,version:0,claimed:0});}
 data.audit.unshift({id:String(Date.now()),action:path.endsWith('/member')?'member.'+body.role:path.endsWith('/archive')?(body.archived?'content.archive':'content.restore'):'content.update',target:body.id||body.email,before_json:null,after_json:before,created_at:Date.now()});return {ok:true};}
 document.querySelector('#open').onclick=()=>openOwnerConsole({api});await openOwnerConsole({api});`;
-const sources={'/':()=>new Response(html,{'headers':{'Content-Type':'text/html'}}),'/fixture.js':()=>new Response(fixture,{headers:{'Content-Type':'text/javascript'}})};
-http.createServer(async(req,res)=>{try{const pathname=new URL(req.url,'http://localhost').pathname;let r;if(sources[pathname])r=sources[pathname]();else{const file={'/owner-console.js':'../frontend/owner-console.js','/owner-console.css':'../frontend/owner-console.css','/style.css':'../../dist/style.css'}[pathname];r=file?new Response(await fs.readFile(new URL(file,import.meta.url)),{headers:{'Content-Type':pathname.endsWith('.css')?'text/css':'text/javascript'}}):new Response('Not found',{status:404});}res.writeHead(r.status,Object.fromEntries(r.headers));res.end(Buffer.from(await r.arrayBuffer()));}catch{res.writeHead(500);res.end('Preview error');}}).listen(4173,'0.0.0.0',()=>console.log('Synthetic owner console visual preview'));
+const sources = {
+  '/': () => new Response(html, { headers: { 'Content-Type': 'text/html' } }),
+  '/fixture.js': () => new Response(fixture, { headers: { 'Content-Type': 'text/javascript' } }),
+};
+http
+  .createServer(async (req, res) => {
+    try {
+      const pathname = new URL(req.url, 'http://localhost').pathname;
+      let r;
+      if (sources[pathname]) r = sources[pathname]();
+      else {
+        const file = {
+          '/owner-console.js': '../frontend/owner-console.js',
+          '/owner-console.css': '../frontend/owner-console.css',
+          '/style.css': '../../dist/style.css',
+        }[pathname];
+        r = file
+          ? new Response(await fs.readFile(new URL(file, import.meta.url)), {
+              headers: {
+                'Content-Type': pathname.endsWith('.css') ? 'text/css' : 'text/javascript',
+              },
+            })
+          : new Response('Not found', { status: 404 });
+      }
+      res.writeHead(r.status, Object.fromEntries(r.headers));
+      res.end(Buffer.from(await r.arrayBuffer()));
+    } catch {
+      res.writeHead(500);
+      res.end('Preview error');
+    }
+  })
+  .listen(4173, '0.0.0.0', () => console.log('Synthetic owner console visual preview'));

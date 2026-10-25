@@ -4,9 +4,11 @@
 
 ## 開發與檢查
 
-需要 Node.js 24，沒有應用程式 npm 套件依賴。
+需要 Node.js 24，沒有應用程式執行期 npm 套件依賴；Prettier 是開發用格式工具。
 
 ```sh
+npm ci --ignore-scripts
+npm run format:check
 npm test
 npm run build:live
 cd live
@@ -31,3 +33,7 @@ npm run dev
 Repository 不包含真實角色、私人筆記、帳號對照、備份或憑證，也不包含先前私人版本的 Git history。測試使用虛構資料。正式資料保存在 D1，網站內編輯不會自動回寫 Git 或 Google Sheets。
 
 舊資料 seed 工具需由管理者另提供私人來源快照，不是重新部署必要步驟；已有 D1 不要重跑 seed。GitHub Actions 在 push／PR 時檢查測試與 build；正式站透過獨立的手動 workflow 發布。詳見 [發布流程](docs/RELEASING.md)。
+
+## 程式碼閱讀與維護
+
+使用 `npm run format` 統一排版；CI 會執行 `npm run format:check`。原始碼位置、build 組合方式與一次性工具的保留／移除評估，見 [程式碼與工具盤點](docs/CODE-MAINTENANCE.md)。正式 migrations 不納入格式化，已套用檔案保持原樣。

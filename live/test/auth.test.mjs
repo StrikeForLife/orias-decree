@@ -1,7 +1,90 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {verifyGoogleToken} from '../server/auth.mjs';
-const pair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);const jwk={...await crypto.subtle.exportKey('jwk',pair.publicKey),kid:'test-key'};const now=1800000000,base={iss:'https://accounts.google.com',aud:'test-client',sub:'google-123',email:'player@gmail.com',email_verified:true,nonce:'test-nonce',iat:now,exp:now+3600};const b64=x=>Buffer.from(x).toString('base64url');
-async function token(claims=base,header={alg:'RS256',kid:'test-key'}){const prefix=b64(JSON.stringify(header))+'.'+b64(JSON.stringify(claims));return prefix+'.'+b64(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',pair.privateKey,new TextEncoder().encode(prefix)))}
-test('valid Google-style RS256 signature and claims',async()=>assert.equal((await verifyGoogleToken(await token(),'test-client','test-nonce',async()=>[jwk],now)).sub,base.sub));
-for(const [label,patch]of [['wrong audience',{aud:'attacker'}],['expired',{exp:now-1}],['wrong nonce',{nonce:'attacker'}],['unverified email',{email_verified:false}],['wrong issuer',{iss:'https://evil.example'}],['future issue time',{iat:now+1000}]])test('reject '+label,async()=>assert.rejects(verifyGoogleToken(await token({...base,...patch}),'test-client','test-nonce',async()=>[jwk],now),{status:401}));
-test('reject a forged signature',async()=>{const t=await token();await assert.rejects(verifyGoogleToken(t.slice(0,-8)+'aaaaaaaa','test-client','test-nonce',async()=>[jwk],now),{status:401})});
-test('reject algorithm confusion',async()=>assert.rejects(verifyGoogleToken(await token(base,{alg:'none',kid:'test-key'}),'test-client','test-nonce',async()=>[jwk],now),{status:401}));
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { verifyGoogleToken } from '../server/auth.mjs';
+const pair = await crypto.subtle.generateKey(
+  {
+    name: 'RSASSA-PKCS1-v1_5',
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: 'SHA-256',
+  },
+  true,
+  ['sign', 'verify'],
+);
+const jwk = { ...(await crypto.subtle.exportKey('jwk', pair.publicKey)), kid: 'test-key' };
+const now = 1800000000,
+  base = {
+    iss: 'https://accounts.google.com',
+    aud: 'test-client',
+    sub: 'google-123',
+    email: 'player@gmail.com',
+    email_verified: true,
+    nonce: 'test-nonce',
+    iat: now,
+    exp: now + 3600,
+  };
+const b64 = (x) => Buffer.from(x).toString('base64url');
+async function token(claims = base, header = { alg: 'RS256', kid: 'test-key' }) {
+  const prefix = b64(JSON.stringify(header)) + '.' + b64(JSON.stringify(claims));
+  return (
+    prefix +
+    '.' +
+    b64(
+      await crypto.subtle.sign(
+        'RSASSA-PKCS1-v1_5',
+        pair.privateKey,
+        new TextEncoder().encode(prefix),
+      ),
+    )
+  );
+}
+test('valid Google-style RS256 signature and claims', async () =>
+  assert.equal(
+    (await verifyGoogleToken(await token(), 'test-client', 'test-nonce', async () => [jwk], now))
+      .sub,
+    base.sub,
+  ));
+for (const [label, patch] of [
+  ['wrong audience', { aud: 'attacker' }],
+  ['expired', { exp: now - 1 }],
+  ['wrong nonce', { nonce: 'attacker' }],
+  ['unverified email', { email_verified: false }],
+  ['wrong issuer', { iss: 'https://evil.example' }],
+  ['future issue time', { iat: now + 1000 }],
+])
+  test('reject ' + label, async () =>
+    assert.rejects(
+      verifyGoogleToken(
+        await token({ ...base, ...patch }),
+        'test-client',
+        'test-nonce',
+        async () => [jwk],
+        now,
+      ),
+      { status: 401 },
+    ),
+  );
+test('reject a forged signature', async () => {
+  const t = await token();
+  await assert.rejects(
+    verifyGoogleToken(
+      t.slice(0, -8) + 'aaaaaaaa',
+      'test-client',
+      'test-nonce',
+      async () => [jwk],
+      now,
+    ),
+    { status: 401 },
+  );
+});
+test('reject algorithm confusion', async () =>
+  assert.rejects(
+    verifyGoogleToken(
+      await token(base, { alg: 'none', kid: 'test-key' }),
+      'test-client',
+      'test-nonce',
+      async () => [jwk],
+      now,
+    ),
+    { status: 401 },
+  ));

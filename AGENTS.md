@@ -30,11 +30,11 @@
 | deploy/production.json | 正式目標的非機密識別設定 |
 | .github/workflows/ | CI 及手動發布流程 |
 
-Build 目前使用字串切片及替換組合 UI。修改 dist/app.js 的函式名稱、初始化或資源操作時，必須檢查 live/scripts/build.mjs 的替換仍有效，並檢視產生的 live/public/app.js。不要讓 UI 改動意外繞過正式 API。
+Build 透過 dist/app.js 的 @live-state 與 @live-notes 具名區段替換離線連線層，組合邏輯在 live/scripts/frontend-build.mjs。不要移除區段標記；缺失、重複或順序錯誤會停止 build。修改資源操作時保留明確的 command 參數，並檢視產生的 live/public/app.js，避免繞過正式 API。
 
 ## 本機開發與驗證
 
-需要 Node.js 24；目前沒有應用程式 npm 套件依賴。從 repository 根目錄執行：
+需要 Node.js 24；目前沒有應用程式執行期 npm 套件依賴。開發格式工具用 npm ci --ignore-scripts 安裝，npm run format 排版，npm run format:check 檢查。從 repository 根目錄執行：
 
 ```sh
 npm test

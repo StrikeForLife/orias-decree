@@ -1,6 +1,94 @@
-let noteTimer=null,noteQueue=Promise.resolve();
-function openNote(id){if(!perm().private)return toast('沒有私人筆記閱讀權');const list=state.notes[selected]??=[];editing=list.find(n=>n.id===id);if(!editing){if(!perm().notesWrite)return toast('DM 只能閱讀別人的場次筆記');editing={id:crypto.randomUUID(),title:'',body:'',date:new Date().toLocaleDateString('en-CA'),version:null};list.push(editing);}editing.characterId=selected;$('#editor').onclose=closeNote;$('#noteTitle').value=editing.title;$('#noteBody').value=editing.body;$('#noteDate').value=editing.date;for(const sel of ['#noteTitle','#noteBody','#noteDate'])$(sel).readOnly=!perm().notesWrite;$('#deleteNote').hidden=!perm().notesWrite;$('#noteSave').textContent=perm().notesWrite?'內容修改後儲存至伺服器':'DM 唯讀';$('#editor').showModal();}
-function scheduleNote(){clearTimeout(noteTimer);$('#noteSave').textContent='儲存中…';const note=editing;noteTimer=setTimeout(()=>saveNote(note),700);}
-function saveNote(note){noteQueue=noteQueue.then(async()=>{try{const r=await api(`/api/characters/${note.characterId}/notes`,{method:'POST',body:{id:note.id,title:note.title,date:note.date,body:note.body,version:note.version}});note.version=r.version;$('#noteSave').textContent='✓ 已儲存至伺服器';saved()}catch(e){$('#noteSave').textContent='儲存失敗，請保留本頁草稿';saved('筆記未儲存');toast(e.message)}});return noteQueue;}
-for(const [sel,key]of [['#noteTitle','title'],['#noteBody','body'],['#noteDate','date']])$(sel).oninput=e=>{editing[key]=e.target.value;scheduleNote()};
-function closeNote(){if(perm(editing?.characterId).notesWrite){clearTimeout(noteTimer);saveNote(editing)}render()}$('#editor').onclose=closeNote;$('#deleteNote').onclick=async()=>{if(!confirm('刪除此篇場次筆記？'))return;const n=editing;clearTimeout(noteTimer);await noteQueue;try{if(n.version!==null)await api(`/api/characters/${n.characterId}/notes`,{method:'DELETE',body:{id:n.id,version:n.version}});state.notes[n.characterId]=state.notes[n.characterId].filter(x=>x.id!==n.id);$('#editor').onclose=()=>render();$('#editor').close();saved()}catch(e){toast(e.message)}};$('#quicknote').onclick=()=>openNote();
+let noteTimer = null,
+  noteQueue = Promise.resolve();
+function openNote(id) {
+  if (!perm().private) return toast('沒有私人筆記閱讀權');
+  const list = (state.notes[selected] ??= []);
+  editing = list.find((n) => n.id === id);
+  if (!editing) {
+    if (!perm().notesWrite) return toast('DM 只能閱讀別人的場次筆記');
+    editing = {
+      id: crypto.randomUUID(),
+      title: '',
+      body: '',
+      date: new Date().toLocaleDateString('en-CA'),
+      version: null,
+    };
+    list.push(editing);
+  }
+  editing.characterId = selected;
+  $('#editor').onclose = closeNote;
+  $('#noteTitle').value = editing.title;
+  $('#noteBody').value = editing.body;
+  $('#noteDate').value = editing.date;
+  for (const sel of ['#noteTitle', '#noteBody', '#noteDate']) $(sel).readOnly = !perm().notesWrite;
+  $('#deleteNote').hidden = !perm().notesWrite;
+  $('#noteSave').textContent = perm().notesWrite ? '內容修改後儲存至伺服器' : 'DM 唯讀';
+  $('#editor').showModal();
+}
+function scheduleNote() {
+  clearTimeout(noteTimer);
+  $('#noteSave').textContent = '儲存中…';
+  const note = editing;
+  noteTimer = setTimeout(() => saveNote(note), 700);
+}
+function saveNote(note) {
+  noteQueue = noteQueue.then(async () => {
+    try {
+      const r = await api(`/api/characters/${note.characterId}/notes`, {
+        method: 'POST',
+        body: {
+          id: note.id,
+          title: note.title,
+          date: note.date,
+          body: note.body,
+          version: note.version,
+        },
+      });
+      note.version = r.version;
+      $('#noteSave').textContent = '✓ 已儲存至伺服器';
+      saved();
+    } catch (e) {
+      $('#noteSave').textContent = '儲存失敗，請保留本頁草稿';
+      saved('筆記未儲存');
+      toast(e.message);
+    }
+  });
+  return noteQueue;
+}
+for (const [sel, key] of [
+  ['#noteTitle', 'title'],
+  ['#noteBody', 'body'],
+  ['#noteDate', 'date'],
+])
+  $(sel).oninput = (e) => {
+    editing[key] = e.target.value;
+    scheduleNote();
+  };
+function closeNote() {
+  if (perm(editing?.characterId).notesWrite) {
+    clearTimeout(noteTimer);
+    saveNote(editing);
+  }
+  render();
+}
+$('#editor').onclose = closeNote;
+$('#deleteNote').onclick = async () => {
+  if (!confirm('刪除此篇場次筆記？')) return;
+  const n = editing;
+  clearTimeout(noteTimer);
+  await noteQueue;
+  try {
+    if (n.version !== null)
+      await api(`/api/characters/${n.characterId}/notes`, {
+        method: 'DELETE',
+        body: { id: n.id, version: n.version },
+      });
+    state.notes[n.characterId] = state.notes[n.characterId].filter((x) => x.id !== n.id);
+    $('#editor').onclose = () => render();
+    $('#editor').close();
+    saved();
+  } catch (e) {
+    toast(e.message);
+  }
+};
+$('#quicknote').onclick = () => openNote();

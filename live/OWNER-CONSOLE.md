@@ -2,6 +2,8 @@
 
 這次更新新增網站內的「✺ 典藏管理室」。只有綁定的網站擁有者可使用；DM 權限本身不包含後台權限。
 
+> 本管理室已在正式站啟用。日常發布以 [手動發布流程](../docs/RELEASING.md) 為準；以下升級段落僅記錄首次導入背景，不要在既有站點重跑初始化、migration 或 OWNER_EMAIL 設定。
+
 ## 升級既有網站（保留正式資料）
 
 1. 先執行 `node scripts/maintain.mjs backup` 保存並驗證目前資料。
@@ -43,6 +45,6 @@ npx wrangler@4 deploy
 
 ## GitHub
 
-使用 `node live/scripts/export-github.mjs <輸出資料夾>` 準備乾淨程式碼快照。它不複製 .git 歷史、Sites 設定、角色快照、原始帳號對照、任何 .runtime／備份／憑證；部署設定中的個人 D1 ID／網站 origin／Google client ID 改為範例值。
+本 repository 已是維護中的程式來源，直接使用 Git clone、功能分支和 PR。舊的 `export-github.mjs` 匯出器已退役，它會產生過時文件並遺漏正式發布設定，不再用於更新 repository。
 
-GitHub Actions 使用 Node 24 執行測試與正式前端 build，不會部署或存取正式 D1。預設建議 Private repository；若日後公開，仍需你核對自創設定文字、圖樣及授權。推送後可沿用本機 Wrangler 部署，不會自動把 GitHub 接到 Cloudflare。
+一般 CI 只執行格式檢查、測試及 build。正式部署仍使用獨立的 **Deploy production (manual)**，詳見 [發布流程](../docs/RELEASING.md)。檔案生命週期盤點見 [程式碼與工具盤點](../docs/CODE-MAINTENANCE.md)。

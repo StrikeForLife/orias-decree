@@ -1,0 +1,9 @@
+# Match Prettier on Windows and CI; leave historical SQL migrations untouched.
+*.js text eol=lf
+*.mjs text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

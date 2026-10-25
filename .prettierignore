@@ -1,0 +1,11 @@
+node_modules/
+**/.runtime/
+**/.wrangler/
+live/public/
+**/backups/
+dist/data.json
+dist/background.json
+**/import-mapping.json
+**/wrangler.actions.jsonc
+**/wrangler.production.local.jsonc
+live/migrations/
