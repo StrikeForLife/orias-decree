@@ -24,9 +24,6 @@ new MutationObserver(()=>animateSurface($('#detail'),[
 ])).observe($('#detail'),{childList:true});
 document.querySelector('header nav').addEventListener('click',event=>{
  const button=event.target.closest('[data-page]');if(!button)return;
- animateSurface(button,[{transform:'rotate(0deg)'},{transform:'rotate(-3deg)',offset:.25},
-  {transform:'rotate(2deg)',offset:.55},{transform:'rotate(-.7deg)',offset:.8},{transform:'rotate(0deg)'}
- ],{duration:460});
  animateSurface($('#content'),[{opacity:.4,transform:'translateY(5px)'},{opacity:1,transform:'translateY(0)'}]);
 });
 document.addEventListener('click',event=>{
