@@ -19,3 +19,38 @@ test('locked future perks never reach the player bootstrap',async()=>{const {db,
 test('character creation validates stat budget and mandatory spell server-side',async()=>{const {db,request}=await setup();await addDefinitions(db);const good={name:'New hero',classId:'ranger',schoolId:'wind',backgroundId:'origin',base:{Strength:4,Dexterity:3,Constitution:1,Intelligence:0,Wisdom:0,Charisma:0},spells:['core']};assert.equal((await request('owner','/api/characters','POST',{...good,spells:['other']})).status,400);assert.equal((await request('owner','/api/characters','POST',{...good,base:{...good.base,Dexterity:4}})).status,400);assert.equal((await request('owner','/api/characters','POST',good)).status,201);db.close()});
 test('DM permission allows exactly one reselect and failed validation leaves original choice intact',async()=>{const {db,request}=await setup();await addDefinitions(db);const choose={version:0,classId:'ranger',schoolId:'wind',spells:['core']};assert.equal((await request('owner','/api/characters/hero/reselect','POST',choose)).status,403);await db.prepare("UPDATE characters SET edit_spells=1 WHERE id='hero'").run();assert.equal((await request('owner','/api/characters/hero/reselect','POST',{...choose,spells:['other']})).status,400);assert.equal((await db.prepare("SELECT edit_spells FROM characters WHERE id='hero'").first()).edit_spells,1);assert.equal((await request('owner','/api/characters/hero/reselect','POST',choose)).status,200);assert.equal((await db.prepare("SELECT edit_spells FROM characters WHERE id='hero'").first()).edit_spells,0);assert.equal((await request('owner','/api/characters/hero/reselect','POST',{...choose,version:1})).status,403);db.close()});
 test('concurrent resource commands are rebased without losing a hit',async()=>{const {db,request}=await setup();const results=await Promise.all(['concurrent-1','concurrent-2'].map(operationId=>request('owner','/api/characters/hero/resource','POST',{operationId,command:{kind:'damage',amount:5,exempt:false}})));assert(results.every(r=>r.status===200));const row=await db.prepare("SELECT * FROM characters WHERE id='hero'").first(),st=JSON.parse(row.state);assert.equal(row.version,2);assert.equal(st.hp,10);assert.deepEqual(st.wounds,[1,2]);db.close()});
+
+const baseStats={Strength:4,Dexterity:3,Constitution:1,Intelligence:0,Wisdom:0,Charisma:0};
+const zeroGrowth=()=>Object.fromEntries(Object.keys(baseStats).map(k=>[k,0]));
+async function trackedHero(db){const row=db.raw.prepare("SELECT sheet FROM characters WHERE id='hero'").get();db.raw.prepare("UPDATE characters SET sheet=? WHERE id='hero'").run(JSON.stringify({...JSON.parse(row.sheet),...Object.fromEntries(Object.entries(baseStats).map(([k,v])=>[k,String(v)])),_baseStats:baseStats,_growth:zeroGrowth()}));}
+test('DM sets level, owner allocates earned points, and forged DM stats cannot change a sheet',async()=>{const {db,request}=await setup();try{
+ await trackedHero(db);const route='/api/admin/character';
+ assert.equal((await request('dm',route,'PATCH',{id:'hero',version:0,level:4,stats:baseStats})).status,403);
+ assert.equal(db.raw.prepare("SELECT version FROM characters WHERE id='hero'").get().version,0);
+ assert.equal((await request('owner',route,'PATCH',{id:'hero',version:0,level:4})).status,403);
+ assert.equal((await request('dm',route,'PATCH',{id:'hero',version:0,level:4})).status,200);
+ const growth={...zeroGrowth(),Strength:1,Constitution:1},body={version:1,growth};
+ for(const actor of ['dm','other','reader'])assert.equal((await request(actor,'/api/characters/hero/growth','POST',body)).status,403);
+ assert.equal((await request('owner','/api/characters/hero/growth','POST',{...body,growth:{...growth,Wisdom:1}})).status,400);
+ assert.equal((await request('owner','/api/characters/hero/growth','POST',{...body,growth:{...zeroGrowth(),Strength:2}})).status,400);
+ assert.equal((await request('owner','/api/characters/hero/growth','POST',body)).status,200);
+ const sheet=JSON.parse(db.raw.prepare("SELECT sheet FROM characters WHERE id='hero'").get().sheet);
+ assert.equal(sheet.Strength,'5');assert.equal(sheet.Constitution,'2');assert.equal(sheet['Max Health'],'40');assert.deepEqual(sheet._baseStats,baseStats);
+ assert.equal((await request('owner','/api/characters/hero/growth','POST',body)).status,409);
+ assert.equal((await request('dm',route,'PATCH',{id:'hero',version:2,level:2})).status,409);
+ assert.equal(JSON.parse(db.raw.prepare("SELECT sheet FROM characters WHERE id='hero'").get().sheet).Level,'4');
+ assert.equal((await request('owner','/api/characters/hero/growth','POST',{version:2,growth:zeroGrowth()})).status,200);
+ assert.equal((await request('dm',route,'PATCH',{id:'hero',version:3,level:2})).status,200);
+}finally{db.close()}});
+test('legacy level changes preserve attributes and do not invent a stat allocation history',async()=>{const {db,request}=await setup();try{
+ const before=JSON.parse(db.raw.prepare("SELECT sheet FROM characters WHERE id='hero'").get().sheet);
+ assert.equal((await request('dm','/api/admin/character','PATCH',{id:'hero',version:0,level:6})).status,200);
+ const after=JSON.parse(db.raw.prepare("SELECT sheet FROM characters WHERE id='hero'").get().sheet);
+ for(const key of Object.keys(baseStats))assert.equal(after[key],before[key]);assert.equal(after._baseStats,undefined);
+ assert.equal((await request('owner','/api/characters/hero/growth','POST',{version:1,growth:zeroGrowth()})).status,409);
+}finally{db.close()}});
+test('DM bootstrap exposes current unlock flags without granting another character owner controls',async()=>{const {db,request}=await setup();try{
+ db.raw.exec("UPDATE characters SET edit_class=1,edit_spells=1 WHERE id='hero'");
+ const dm=await(await request('dm','/api/bootstrap')).json();assert.equal(dm.permissions.hero.classUnlocked,true);assert.equal(dm.permissions.hero.spellsUnlocked,true);assert.equal(dm.permissions.hero.editClass,false);
+ const reader=await(await request('reader','/api/bootstrap')).json();assert.equal(reader.permissions.hero.classUnlocked,false);
+}finally{db.close()}});
