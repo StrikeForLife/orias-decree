@@ -8,7 +8,9 @@ app=app.replace("s[key]=e.target.value;persist()","s[key]=e.target.value;queuePr
 const noteStart=app.indexOf('function openNote('),noteEnd=app.indexOf("$('#character').innerHTML",noteStart);app=app.slice(0,noteStart)+(await fs.readFile(new URL('../frontend/notes.js',import.meta.url),'utf8'))+app.slice(noteEnd);
 app=app.replace("$('#character').onchange=e=>{selected=e.target.value;", "$('#character').onchange=e=>{selected=e.target.value;");
 app=app.replace("wireDetails()}\nfunction openNote", "wireDetails();protectUI()}\nfunction openNote"); // render is also protected by the wrapper below.
-app+='\nconst originalRender=render;render=function(){originalRender();protectUI()};protectUI();\n';
+app+='\n'+await fs.readFile(new URL('../frontend/character-forms.js',import.meta.url),'utf8');
+app+='\n'+await fs.readFile(new URL('../frontend/motion.js',import.meta.url),'utf8');
+app+='\nconst originalRender=render;render=function(){originalRender();protectUI();renderGrowthPanel()};protectUI();renderGrowthPanel();\n';
 for(const name of ['owner-console.js','owner-console.css'])await fs.copyFile(new URL('../frontend/'+name,import.meta.url),new URL(name,dir));
 await fs.writeFile(new URL('app.js',dir),app);await fs.copyFile(new URL('../frontend/live.css',import.meta.url),new URL('live.css',dir));let final=await fs.readFile(new URL('index.html',dir),'utf8');final=final.replace('</head>','<link rel="stylesheet" href="live.css"><link rel="stylesheet" href="owner-console.css"></head>');await fs.writeFile(new URL('index.html',dir),final);
 // Explicit allowlist: never ship snapshots, ownership emails or deployment credentials as static assets.
