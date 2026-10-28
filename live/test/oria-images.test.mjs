@@ -40,3 +40,29 @@ test('all Oria introductions resolve to a complete PNG; unknown beliefs have no 
     assert(png.readUInt32BE(16) > 0 && png.readUInt32BE(20) > 0);
   }
 });
+
+test('belief tabs reuse each Oria portrait as decorative art and retain the belief click target', async () => {
+  const source = await fs.readFile(new URL('../../dist/app.js', import.meta.url), 'utf8');
+  const tile = source.slice(
+    source.indexOf('function beliefTile('),
+    source.indexOf('function backgroundView('),
+  );
+  for (const id of [...Object.keys(BELIEF_KEYS), 'unknown']) {
+    const html = vm.runInNewContext(
+      `${tile}\nbeliefTile({system_id: id, Name: '測試神祇', Title: '測試尊稱'});`,
+      {
+        id,
+        BELIEF_KEYS,
+        esc: (s) => s,
+        chineseName: (s) => s,
+      },
+    );
+    assert(html.includes(`data-belief="${id}"`));
+    if (id === 'unknown') assert(!html.includes('<img'));
+    else {
+      assert(html.includes(`src="oria/${BELIEF_KEYS[id]}.png"`));
+      assert(html.includes('alt="" aria-hidden="true"'));
+      assert(html.includes('loading="lazy"'));
+    }
+  }
+});

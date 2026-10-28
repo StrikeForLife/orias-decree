@@ -1664,6 +1664,8 @@ body:before {
 }
 .belief-monument {
   position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1680,7 +1682,43 @@ body:before {
     inset 0 0 0 5px #131b1d,
     inset 0 0 0 6px color-mix(in srgb, var(--lore-accent) 35%, transparent),
     0 8px 12px #0003;
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease;
 }
+.belief-monument > :not(.monument-portrait) {
+  position: relative;
+  z-index: 1;
+}
+.monument-portrait {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.12;
+  pointer-events: none;
+  user-select: none;
+  transform: scale(0.92);
+  transition:
+    transform 450ms ease,
+    opacity 350ms ease;
+  mask-image: linear-gradient(to bottom, #000 65%, transparent);
+}
+.belief-monument:is(:hover, :focus-visible) .monument-portrait {
+  opacity: 0.2;
+  transform: scale(1.04);
+}
+.belief-monument:active .monument-portrait {
+  opacity: 0.26;
+  transform: scale(0.96);
+  transition-duration: 100ms;
+}
+.belief-monument:active,
+.belief-monument:hover:active {
+  transform: translateY(0) scale(0.98);
+}
+
 .belief-monument:before {
   content: '';
   position: absolute;
@@ -2295,4 +2333,16 @@ body:before {
   max-width: none;
   width: 100%;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .belief-monument,
+  .monument-portrait {
+    transition: none;
+  }
+  .belief-monument:is(:hover, :focus-visible, :active),
+  .belief-monument:hover:active,
+  .belief-monument:is(:hover, :focus-visible, :active) .monument-portrait {
+    transform: none;
+  }
 }

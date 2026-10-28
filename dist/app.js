@@ -288,7 +288,10 @@ function beliefDetail(id) {
   paintLore($('#detail'), BELIEF_KEYS[id] || 'neutral');
 }
 function beliefTile(b) {
-  return `<button class="belief-monument" data-belief="${b.system_id}"><span class="monument-sigil" aria-hidden="true">✺</span><strong>${esc(chineseName(b.Name))}</strong><span class="monument-title">${esc(chineseName(b.Title))}</span><span class="monument-rule" aria-hidden="true">✦</span></button>`;
+  const portrait = BELIEF_KEYS[b.system_id]
+    ? `<img class="monument-portrait" src="oria/${BELIEF_KEYS[b.system_id]}.png" alt="" aria-hidden="true" loading="lazy" decoding="async">`
+    : '';
+  return `<button class="belief-monument" data-belief="${esc(b.system_id)}">${portrait}<span class="monument-sigil" aria-hidden="true">✺</span><strong>${esc(chineseName(b.Name))}</strong><span class="monument-title">${esc(chineseName(b.Title))}</span><span class="monument-rule" aria-hidden="true">✦</span></button>`;
 }
 function backgroundView(r) {
   const bg = find('background', r.Background);
