@@ -25,6 +25,8 @@
 
 正式目標的非機密設定在 `deploy/production.json`：Worker 名稱、D1 ID、origin、Google Web Client ID。這些是公開識別值，不包含玩家資料或憑證。修改需經 PR 審核。
 
+`live/wrangler.jsonc` 雖使用 `.jsonc` 副檔名，發布與維護工具仍以嚴格 JSON 讀取；請勿加入註解或尾隨逗號。Prettier 已對此檔停用尾隨逗號，測試會實際執行 `prepare` 核對設定產生流程。
+
 ## 每次發布
 
 1. 合併已通過檢查的 PR 到 main。建議建立版本 tag，例如 v0.3.0。

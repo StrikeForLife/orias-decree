@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { productionConfig, checkMigrations, preflight } from '../../.github/scripts/production.mjs';
 
 const settings = {
@@ -17,6 +22,36 @@ const base = {
   vars: {},
 };
 const account = 'a'.repeat(32);
+
+test('prepare CLI reads the checked-in configuration and generates explicit production bindings', async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'oria-release-test-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  await fs.mkdir(path.join(directory, 'live'));
+  await fs.copyFile(
+    new URL('../wrangler.jsonc', import.meta.url),
+    path.join(directory, 'live/wrangler.jsonc'),
+  );
+  await fs.writeFile(path.join(directory, 'production.json'), JSON.stringify(settings));
+  const result = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL('../../.github/scripts/production.mjs', import.meta.url)),
+      'prepare',
+      'production.json',
+    ],
+    { cwd: directory, env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: account }, encoding: 'utf8' },
+  );
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  const config = JSON.parse(
+    await fs.readFile(path.join(directory, 'live/wrangler.actions.jsonc'), 'utf8'),
+  );
+  assert.equal(config.name, settings.workerName);
+  assert.equal(config.account_id, account);
+  assert.equal(config.d1_databases[0].database_id, settings.databaseId);
+  assert.equal(config.vars.APP_ORIGIN, settings.origin);
+  assert.equal(config.vars.GOOGLE_CLIENT_ID, settings.googleClientId);
+  assert.equal(config.assets.run_worker_first, true);
+});
 
 test('production config replaces placeholder bindings while preserving code compatibility settings', () => {
   const c = productionConfig(base, settings, account);
