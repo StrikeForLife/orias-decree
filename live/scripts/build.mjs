@@ -33,9 +33,12 @@ for (const [name, source] of Object.entries(assets)) {
 await fs.cp(new URL('../../dist/patterns/', import.meta.url), new URL('patterns/', publicDir), {
   recursive: true,
 });
+await fs.cp(new URL('../../dist/oria/', import.meta.url), new URL('oria/', publicDir), {
+  recursive: true,
+});
 
 // Explicit allowlist: never ship snapshots, ownership emails or deployment credentials.
-const allowed = new Set(['app.js', 'index.html', 'patterns', ...Object.keys(assets)]);
+const allowed = new Set(['app.js', 'index.html', 'patterns', 'oria', ...Object.keys(assets)]);
 for (const file of await fs.readdir(publicDir)) {
   if (!allowed.has(file)) {
     await fs.rm(new URL(file, publicDir), { recursive: true, force: true });

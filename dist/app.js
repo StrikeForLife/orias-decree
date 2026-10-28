@@ -278,9 +278,12 @@ function beliefDetail(id) {
   const b = find('beliefs', id),
     name = chineseName(b.Name),
     english = b.Name.slice(name.length).trim();
+  const portrait = BELIEF_KEYS[id]
+    ? `<img class="divine-portrait" src="oria/${BELIEF_KEYS[id]}.png" alt="" aria-hidden="true" decoding="async">`
+    : '';
   $('#detail').classList.remove('lore-coloured');
   $('#detail').innerHTML =
-    `<div class="divine-heading"><div class="divine-halo" aria-hidden="true">✺</div><div class="eyebrow">信仰典藏</div><h2>${esc(name)}${english ? `<span>${esc(english)}</span>` : ''}</h2><p class="divine-title">${esc(b.Title)}</p><div class="divine-rule" aria-hidden="true">✦ ─ ✧ ─ ✦</div></div>${b.Quote ? `<blockquote class="belief-quote">${esc(b.Quote)}</blockquote>` : ''}${detailSection('信仰介紹', b.Desc)}${b['Belief Effect 1'] ? detailSection('祈禱效果一', b['Belief Effect 1']) : ''}${b['Belief Effect 2'] ? detailSection('祈禱效果二', b['Belief Effect 2']) : ''}`;
+    `<div class="divine-page">${portrait}<div class="divine-heading"><div class="divine-halo" aria-hidden="true">✺</div><div class="eyebrow">信仰典藏</div><h2>${esc(name)}${english ? `<span>${esc(english)}</span>` : ''}</h2><p class="divine-title">${esc(b.Title)}</p><div class="divine-rule" aria-hidden="true">✦ ─ ✧ ─ ✦</div></div>${b.Quote ? `<blockquote class="belief-quote">${esc(b.Quote)}</blockquote>` : ''}${detailSection('信仰介紹', b.Desc)}${b['Belief Effect 1'] ? detailSection('祈禱效果一', b['Belief Effect 1']) : ''}${b['Belief Effect 2'] ? detailSection('祈禱效果二', b['Belief Effect 2']) : ''}</div>`;
   $('#detail').scrollTop = 0;
   paintLore($('#detail'), BELIEF_KEYS[id] || 'neutral');
 }
