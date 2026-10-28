@@ -5,5 +5,11 @@
   "trailingComma": "all",
   "endOfLine": "lf",
   "htmlWhitespaceSensitivity": "css",
-  "embeddedLanguageFormatting": "off"
+  "embeddedLanguageFormatting": "off",
+  "overrides": [
+    {
+      "files": "live/wrangler.jsonc",
+      "options": { "trailingComma": "none" }
+    }
+  ]
 }
