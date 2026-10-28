@@ -1753,6 +1753,28 @@ body:before {
   color: var(--lore-light);
   margin: 12px 0 20px;
 }
+.divine-page {
+  position: relative;
+  isolation: isolate;
+}
+.divine-page > :not(.divine-portrait) {
+  position: relative;
+  z-index: 1;
+}
+.divine-portrait {
+  position: absolute;
+  top: 70px;
+  left: 0;
+  width: 100%;
+  height: 480px;
+  object-fit: contain;
+  object-position: center top;
+  opacity: 0.12;
+  pointer-events: none;
+  user-select: none;
+  mask-image: linear-gradient(to bottom, #000 45%, transparent 100%);
+}
+
 .divine-rule {
   font-size: 11px;
   letter-spacing: 2px;
