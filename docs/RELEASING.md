@@ -53,6 +53,10 @@ npx wrangler@4 d1 migrations apply oria-decree --config wrangler.production.loca
 
 若沿用原本已部署成功的本機專案及有效 wrangler.jsonc，既有備份流程也可繼續使用。不要把含私人資料的舊目錄整個推送至 repo。
 
+## D1 核心資料正規化
+
+`0003_normalize_core.sql` 的欄位映射、私人副本演練、驗收及各階段回退條件見 [D1 正規化方案](D1-NORMALIZATION.md)。先在隔離資料庫比對資料及 API；舊 JSON 和回退快照在驗收前保留。正式 migration 及部署仍由管理者分開手動執行。
+
 ## 失敗與回退
 
 - **測試／build 失敗**：不會部署；在新分支修正，再走 PR。

@@ -6,9 +6,15 @@ import { sqliteDB } from '../scripts/sqlite-adapter.mjs';
 import { createHandler } from '../server/worker.mjs';
 import { hash } from '../server/auth.mjs';
 import { seed } from '../scripts/import-data.mjs';
-const schema =
-  (await fs.readFile(new URL('../migrations/0001.sql', import.meta.url), 'utf8')) +
-  (await fs.readFile(new URL('../migrations/0002_owner_console.sql', import.meta.url), 'utf8'));
+const migrationFolder = new URL('../migrations/', import.meta.url);
+const schema = (
+  await Promise.all(
+    (await fs.readdir(migrationFolder))
+      .filter((n) => n.endsWith('.sql'))
+      .sort()
+      .map((n) => fs.readFile(new URL(n, migrationFolder), 'utf8')),
+  )
+).join('\n');
 async function setup() {
   const db = sqliteDB();
   db.raw.exec(schema);
