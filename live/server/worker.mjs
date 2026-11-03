@@ -61,7 +61,7 @@ async function role(db, userId, campaignId) {
 async function character(db, id, user) {
   const row = await stmt(
     db,
-    'SELECT c.*,p.active FROM characters c JOIN campaigns p ON p.id=c.campaign_id WHERE c.id=?',
+    'SELECT c.*,p.active FROM normalized_characters c JOIN campaigns p ON p.id=c.campaign_id WHERE c.id=?',
     id,
   ).first();
   if (!row) fail(404, '角色不存在');
@@ -76,7 +76,10 @@ async function requireDM(db, s, campaignId) {
 }
 async function definitions(db) {
   const out = { class: [], school: [], spell: [], weapon: [], beliefs: [], background: [] };
-  for (const r of await all(db, 'SELECT * FROM definitions WHERE archived=0'))
+  for (const r of await all(
+    db,
+    'SELECT * FROM normalized_definitions WHERE archived=0 ORDER BY (SELECT rowid FROM definitions d WHERE d.kind=normalized_definitions.kind AND d.id=normalized_definitions.id)',
+  ))
     (out[r.kind] ??= []).push(JSON.parse(r.payload));
   return out;
 }
@@ -100,7 +103,7 @@ async function bootstrap(db, s) {
     ).first());
   const defs = await definitions(db),
     rows = campaign
-      ? await all(db, 'SELECT * FROM characters WHERE campaign_id=?', campaign.id)
+      ? await all(db, 'SELECT * FROM normalized_characters WHERE campaign_id=?', campaign.id)
       : [];
   const state = {},
     permissions = {},

@@ -93,7 +93,7 @@ const nameOf = (p) =>
   p.system_id;
 
 async function catalog(db) {
-  return (await rows(db, 'SELECT * FROM definitions ORDER BY kind,id')).map((r) => ({
+  return (await rows(db, 'SELECT * FROM normalized_definitions ORDER BY kind,id')).map((r) => ({
     ...r,
     payload: JSON.parse(r.payload),
   }));
@@ -102,7 +102,7 @@ async function catalog(db) {
 /** All references count, including archived definitions and inactive campaigns. */
 async function references(db, kind, id) {
   const out = [];
-  for (const c of await rows(db, 'SELECT id,sheet FROM characters')) {
+  for (const c of await rows(db, 'SELECT id,sheet FROM normalized_characters')) {
     const p = JSON.parse(c.sheet);
     const field = {
       class: 'Class',
@@ -115,7 +115,7 @@ async function references(db, kind, id) {
   if (kind === 'spell' || kind === 'weapon')
     for (const c of await rows(
       db,
-      `SELECT c.sheet FROM ${kind === 'spell' ? 'character_spells' : 'character_weapons'} l JOIN characters c ON c.id=l.character_id WHERE l.${kind === 'spell' ? 'spell_id' : 'weapon_id'}=?`,
+      `SELECT c.sheet FROM ${kind === 'spell' ? 'character_spells' : 'character_weapons'} l JOIN normalized_characters c ON c.id=l.character_id WHERE l.${kind === 'spell' ? 'spell_id' : 'weapon_id'}=?`,
       id,
     ))
       out.push('角色：' + nameOf(JSON.parse(c.sheet)));
@@ -136,29 +136,26 @@ async function references(db, kind, id) {
 function unusedConditions(kind, id) {
   const value = q(id),
     conditions = [];
-  const field = { class: 'Class', school: 'School', background: 'Background' }[kind];
-  if (field)
-    conditions.push(
-      `NOT EXISTS(SELECT 1 FROM characters WHERE json_extract(sheet,'$.${field}')=${value})`,
-    );
+  const column = { class: 'class_id', school: 'school_id', background: 'background_id' }[kind];
+  if (column)
+    conditions.push(`NOT EXISTS(SELECT 1 FROM character_profiles WHERE ${column}=${value})`);
+  // Preserve the existing transaction guard's whitespace handling for old beliefs.
   if (kind === 'beliefs')
     conditions.push(
-      `NOT EXISTS(SELECT 1 FROM characters WHERE instr(','||replace(COALESCE(json_extract(sheet,'$.Beliefs'),''),' ','')||',',','||${value}||',')>0)`,
+      `NOT EXISTS(SELECT 1 FROM character_profiles WHERE instr(','||replace(COALESCE(beliefs,''),' ','')||',',','||${value}||',')>0)`,
     );
   if (kind === 'spell' || kind === 'weapon')
     conditions.push(
       `NOT EXISTS(SELECT 1 FROM ${kind === 'spell' ? 'character_spells' : 'character_weapons'} WHERE ${kind === 'spell' ? 'spell_id' : 'weapon_id'}=${value})`,
     );
   const related = {
-    class: ['school', 'Class'],
-    school: ['spell', 'School'],
-    beliefs: ['school', 'Belief'],
-    spell: ['school', 'Main Spell'],
+    class: ['catalog_schools', 'class_id'],
+    school: ['catalog_spells', 'school_id'],
+    beliefs: ['catalog_schools', 'belief_id'],
+    spell: ['catalog_schools', 'main_spell_id'],
   }[kind];
   if (related)
-    conditions.push(
-      `NOT EXISTS(SELECT 1 FROM definitions WHERE kind=${q(related[0])} AND json_extract(payload,'$."${related[1]}"')=${value})`,
-    );
+    conditions.push(`NOT EXISTS(SELECT 1 FROM ${related[0]} WHERE ${related[1]}=${value})`);
   return conditions;
 }
 
@@ -194,7 +191,16 @@ async function validatePayload(db, kind, id, p) {
     conditions.push(
       `EXISTS(SELECT 1 FROM definitions WHERE kind=${q(k)} AND id=${q(target)} AND archived=0 AND version=${r.version})`,
     );
-    return JSON.parse(r.payload);
+    return JSON.parse(
+      (
+        await statement(
+          db,
+          'SELECT payload FROM normalized_definitions WHERE kind=? AND id=?',
+          k,
+          String(target),
+        ).first()
+      ).payload,
+    );
   };
   if (kind === 'school') {
     await check('class', p.Class, true);
