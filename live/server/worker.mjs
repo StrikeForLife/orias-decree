@@ -1,3 +1,5 @@
+import { changeLoadout } from './loadout.mjs';
+import { archiveInfo } from './archive-info.mjs';
 import { ownerRoutes, isSiteOwner, claimSiteOwner, selectionGuard } from './owner-admin.mjs';
 import {
   HttpError,
@@ -81,6 +83,7 @@ async function definitions(db) {
     'SELECT * FROM normalized_definitions WHERE archived=0 ORDER BY (SELECT rowid FROM definitions d WHERE d.kind=normalized_definitions.kind AND d.id=normalized_definitions.id)',
   ))
     (out[r.kind] ??= []).push(JSON.parse(r.payload));
+  out.info = await archiveInfo(db);
   return out;
 }
 function toSheet(row) {
@@ -117,9 +120,13 @@ async function bootstrap(db, s) {
       dm = r === 'dm',
       sheet = toSheet(row);
     const sp = await all(db, 'SELECT spell_id FROM character_spells WHERE character_id=?', row.id),
-      wp = await all(db, 'SELECT weapon_id FROM character_weapons WHERE character_id=?', row.id);
+      wp = await all(
+        db,
+        'SELECT weapon_id,quantity FROM character_weapons WHERE character_id=?',
+        row.id,
+      );
     sheet.Spells = sp.map((x) => x.spell_id).join(' , ');
-    sheet.Weapons = wp.map((x) => x.weapon_id).join(' , ');
+    sheet.Weapons = wp.flatMap((x) => Array(x.quantity).fill(x.weapon_id)).join(' , ');
     delete sheet.Inventory;
     delete sheet.Notes;
     state[row.id] = JSON.parse(row.state);
@@ -235,10 +242,13 @@ async function login(req, env, verifier) {
 }
 /** CAS + transactional operation record: retries cannot apply a resource change twice. */
 async function resource(db, s, id, b) {
-  if (typeof b.operationId !== 'string' || !/^[\w:.-]{8,150}$/.test(b.operationId))
+  if (typeof b?.operationId !== 'string' || !/^[\w:.-]{8,150}$/.test(b.operationId))
     fail(400, '缺少有效操作 ID');
+  if (!b.command || typeof b.command !== 'object' || Array.isArray(b.command))
+    fail(400, '角色操作格式無效');
   let c = await character(db, id, s);
   if (!edits(c, s)) fail(403, '沒有角色編輯權');
+  if (b.command?.kind === 'adjust' && c.role !== 'dm') fail(403, '資源調整只限 DM');
   if (b.command?.kind === 'rest' && c.role !== 'dm') fail(403, '長休由 DM 管理');
   const request = JSON.stringify(b.command);
   const existing = await stmt(db, 'SELECT * FROM operations WHERE id=?', b.operationId).first();
@@ -252,6 +262,8 @@ async function resource(db, s, id, b) {
     return { state: JSON.parse(c.state), version: c.version, replayed: true };
   }
   for (let attempt = 0; attempt < 3; attempt++) {
+    if (!edits(c, s) || (['adjust', 'rest'].includes(b.command?.kind) && c.role !== 'dm'))
+      fail(403, '沒有角色操作權');
     const before = c.state,
       sheet = toSheet(c),
       next = applyResource(JSON.parse(before), sheet, b.command),
@@ -259,10 +271,13 @@ async function resource(db, s, id, b) {
     const result = await db.batch([
       stmt(
         db,
-        'UPDATE characters SET state=?,version=version+1 WHERE id=? AND version=?',
+        "UPDATE characters SET state=?,version=version+1 WHERE id=? AND version=? AND EXISTS(SELECT 1 FROM access_grants a JOIN campaigns p ON p.id=a.campaign_id WHERE a.user_id=? AND a.campaign_id=characters.campaign_id AND (a.role='dm' OR (?=0 AND a.role='player' AND p.active=1 AND characters.owner_user_id=?)))",
         after,
         id,
         c.version,
+        s.user_id,
+        ['adjust', 'rest'].includes(b.command?.kind) ? 1 : 0,
+        s.user_id,
       ),
       stmt(
         db,
@@ -315,7 +330,9 @@ async function routes(req, env, verifier) {
       'Set-Cookie': setCookie(cookieNames(env).session, '', 0, env),
     });
   }
-  let m = path.match(/^\/api\/characters\/([^/]+)\/(resource|undo|private|notes|reselect|growth)$/);
+  let m = path.match(
+    /^\/api\/characters\/([^/]+)\/(resource|undo|private|notes|reselect|growth|loadout)$/,
+  );
   if (m) {
     const [, id, action] = m,
       c = await character(db, id, s),
@@ -442,6 +459,8 @@ async function routes(req, env, verifier) {
         return json({ ok: true });
       }
     }
+    if (action === 'loadout' && req.method === 'PATCH')
+      return json(await changeLoadout(db, s, c, b));
     if (action === 'growth' && req.method === 'POST') {
       if (!owns(c, s)) fail(403, '只有角色擁有者可以分配成長點');
       const sh = toSheet(c);
@@ -588,7 +607,7 @@ async function routes(req, env, verifier) {
       camp = await active(db);
     if (!camp || b.campaignId !== camp.id) fail(409, '戰役已切換');
     await requireDM(db, s, camp.id);
-    if (typeof b.operationId !== 'string' || !/^[\w.-]{8,100}$/.test(b.operationId))
+    if (typeof b?.operationId !== 'string' || !/^[\w.-]{8,100}$/.test(b.operationId))
       fail(400, '缺少長休操作 ID');
     const ids = await all(db, 'SELECT id FROM characters WHERE campaign_id=?', camp.id);
     for (const c of ids)

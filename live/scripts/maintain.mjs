@@ -42,11 +42,11 @@ export function loadBackup(file) {
   }
 }
 export function summary(db) {
+  const tables = ['campaigns', 'characters', 'definitions', 'session_notes', 'access_grants'];
+  if (db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='archive_info'").get())
+    tables.push('archive_info');
   return Object.fromEntries(
-    ['campaigns', 'characters', 'definitions', 'session_notes', 'access_grants'].map((t) => [
-      t,
-      Number(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n),
-    ]),
+    tables.map((t) => [t, Number(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n)]),
   );
 }
 

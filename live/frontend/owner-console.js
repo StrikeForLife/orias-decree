@@ -11,6 +11,7 @@ const kinds = {
   weapon: ['武器', '⚔'],
   beliefs: ['信仰', '❖'],
   background: ['出身', '⌖'],
+  info: ['冒險須知', '☷'],
 };
 const title = (p) =>
   p['Spell Name (Chinese)'] ||
@@ -27,6 +28,10 @@ const newId = () =>
     x.toString(16).padStart(2, '0'),
   ).join('');
 const schemas = {
+  info: [
+    ['Name', '標題'],
+    ['Content', '內容', 'area'],
+  ],
   spell: [
     ['Spell Name (Chinese)', '中文名稱'],
     ['Spell Name (English)', '英文名稱'],
@@ -208,7 +213,7 @@ export async function openOwnerConsole({ api, onChange = async () => {} }) {
     const val = payload[key] ?? '';
     let input;
     if (type === 'area')
-      input = `<textarea data-owner-field="${escape(key)}" rows="${key.includes('Desc') || key === 'Desc' ? 7 : 3}" maxlength="80000">${escape(val)}</textarea>`;
+      input = `<textarea data-owner-field="${escape(key)}" rows="${key === 'Content' ? 14 : key.includes('Desc') || key === 'Desc' ? 7 : 3}" maxlength="80000">${escape(val)}</textarea>`;
     else if (type === 'ref') {
       let options = model.catalog.filter((x) => x.kind === reference && !x.archived);
       if (key === 'Main Spell')

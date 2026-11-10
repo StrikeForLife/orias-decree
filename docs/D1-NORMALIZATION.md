@@ -43,6 +43,8 @@ node live/scripts/rehearse-normalization.mjs /private/path/database.sql /private
 
 工具逐列比對所有原表（包括權限、sessions、operations、筆記、稽核），逐份比對 sheet / state / payload 的值及 JSON 型別，並核對原有 schema、quick_check 和 foreign_key_check。它用隔離的臨時測試 session 對每位使用者執行兩個 bootstrap API，檢查成功／403 狀態及完整回應，再回滾測試 session；不需要真實 token，不寫入真實備份。
 
+目前版本會在隔離副本繼續套用 0003 後的 migration（包含 0004），並檢查所有既有欄位與紀錄仍一致。報告會列出 `followupMigrations`；若以 0004 前的 Worker 比較，新增的 `data.info` 與典藏管理室資訊分類會明確列為 `expectedApiAdditions`，其餘回應仍嚴格比對。
+
 預設 `apiBaseline: legacy-storage` 是同一版本 handler 在舊 JSON 儲存與正規化視圖之間比對；提供舊 Worker 路徑時，`apiBaseline: previous-worker` 會實際載入該版本的 handler（連同該 checkout 的依賴）。正式驗收建議提供已保存的相容舊 Worker，而非只依賴預設模式。
 
 - Exit 0：資料／API 比對成功且無列報異常，仍需管理者驗收。

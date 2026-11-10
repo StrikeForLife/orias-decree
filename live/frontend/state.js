@@ -9,7 +9,7 @@ let campaign = data.campaign.find((r) => r.Status === 'TRUE'),
   tab = '冒險裝備',
   selected =
     characters.find((r) => live.permissions[r.system_id]?.owner)?.system_id ||
-    characters[0]?.system_id,
+    (live.role === 'dm' ? characters[0]?.system_id : undefined),
   undo = null,
   editing = null,
   pending = false,
@@ -31,23 +31,52 @@ function current() {
 function perm(id = selected) {
   return live.permissions[id] || {};
 }
-async function reloadLive() {
-  const fresh = await api('/api/bootstrap');
-  window.ORIA = live = fresh;
-  data = fresh.data;
-  state = fresh.state;
-  campaign = data.campaign.find((r) => r.Status === 'TRUE');
-  characters = data.character;
-  selected = characters.some((c) => c.system_id === selected)
-    ? selected
-    : characters.find((c) => perm(c.system_id).owner)?.system_id || characters[0]?.system_id;
-  $('#character').innerHTML = characters
+let reloadPromise = null;
+function selectableCharacters() {
+  return live.role === 'dm' ? characters : characters.filter((c) => perm(c.system_id).owner);
+}
+function syncCharacterSelection() {
+  const choices = selectableCharacters();
+  if (!choices.some((c) => c.system_id === selected)) selected = choices[0]?.system_id;
+  $('#character').innerHTML = choices
     .map((c) => `<option value="${esc(c.system_id)}">${esc(c['Character Name'])}</option>`)
     .join('');
   $('#character').value = selected || '';
-  $('#campaign').textContent = campaign?.['Campaign Name (Chinese)'] || '目前沒有啟用戰役';
-  render();
-  return fresh;
+  $('#character').disabled = !choices.length;
+}
+async function reloadLive() {
+  if (reloadPromise) return reloadPromise;
+  const button = $('#refreshLive'),
+    indicator = $('#reloadSpinner'),
+    message = $('#reloadStatus');
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  indicator.hidden = false;
+  message.textContent = '正在重新載入…';
+  reloadPromise = (async () => {
+    try {
+      const fresh = await api('/api/bootstrap');
+      window.ORIA = live = fresh;
+      data = fresh.data;
+      state = fresh.state;
+      campaign = data.campaign.find((r) => r.Status === 'TRUE');
+      characters = data.character;
+      syncCharacterSelection();
+      $('#campaign').textContent = campaign?.['Campaign Name (Chinese)'] || '目前沒有啟用戰役';
+      render();
+      message.textContent = '重新載入完成';
+      return fresh;
+    } catch (e) {
+      message.textContent = '重新載入失敗：' + e.message;
+      throw e;
+    } finally {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+      indicator.hidden = true;
+      reloadPromise = null;
+    }
+  })();
+  return reloadPromise;
 }
 function saved(message = '✓ 已儲存至伺服器') {
   $('#save').textContent = message;
@@ -152,17 +181,18 @@ function protectUI() {
     if ($('#' + id)) $('#' + id).disabled = !p.notesWrite;
   if (page === '日誌' && !p.private)
     $('#content').innerHTML = '<p class="empty">私人筆記不開放閱讀</p>';
-  $('#character').value = selected || '';
+  syncCharacterSelection();
   if ($('#ownerConsoleButton')) $('#ownerConsoleButton').hidden = !live.isOwner;
   if ($('#adminPanel')) $('#adminPanel').hidden = !live.isDM;
   if ($('#newCharacter')) $('#newCharacter').hidden = !['player', 'dm'].includes(live.role);
   if ($('#reselectCharacter')) $('#reselectCharacter').hidden = !(p.editClass || p.editSpells);
   if ($('#growthCharacter')) $('#growthCharacter').hidden = !p.owner;
+  if ($('#editLoadout')) $('#editLoadout').hidden = !p.edit;
 }
 const controls = document.createElement('div');
 controls.className = 'live-controls';
 controls.innerHTML =
-  '<button id="refreshLive">重新載入</button><button id="retrySave" hidden>重試未確認操作</button><button id="newCharacter">建立角色</button><button id="reselectCharacter" hidden>修改角色選擇</button><button id="growthCharacter" hidden>分配成長點</button><button id="adminPanel">DM 管理</button><button id="ownerConsoleButton" hidden>✺ 典藏管理室</button><button id="logout">登出</button>';
+  '<button id="refreshLive">重新載入 <span id="reloadSpinner" class="reload-spinner" aria-hidden="true" hidden></span></button><span id="reloadStatus" class="reload-status" role="status" aria-live="polite"></span><button id="retrySave" hidden>重試未確認操作</button><button id="newCharacter">建立角色</button><button id="reselectCharacter" hidden>修改角色選擇</button><button id="editLoadout" hidden>調整武器／信仰</button><button id="growthCharacter" hidden>分配成長點</button><button id="adminPanel">DM 管理</button><button id="ownerConsoleButton" hidden>✺ 典藏管理室</button><button id="logout">登出</button>';
 $('.heading').append(controls);
 $('#newCharacter').hidden = !['player', 'dm'].includes(live.role);
 $('#adminPanel').hidden = !live.isDM;
@@ -183,6 +213,7 @@ $('#adminPanel').onclick = () => openAdmin();
 
 $('#reselectCharacter').onclick = () => openReselect();
 $('#growthCharacter').onclick = () => openGrowth();
+$('#editLoadout').onclick = () => openLoadout();
 
 $('#ownerConsoleButton').hidden = !live.isOwner;
 $('#ownerConsoleButton').onclick = async () => {

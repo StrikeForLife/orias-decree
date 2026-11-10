@@ -121,7 +121,8 @@ test('only the bound website owner can read or write console; DM and spoofed hea
     }
     const b = await json(await call('keeper', '/api/owner/bootstrap'));
     assert.equal(b.status, 200);
-    assert.equal(b.body.catalog.length, 5);
+    assert.equal(b.body.catalog.filter((x) => x.kind !== 'info').length, 5);
+    assert.equal(b.body.catalog.filter((x) => x.kind === 'info').length, 10);
     assert(!JSON.stringify(b.body).includes('private note'));
     const owner = await (await call('keeper', '/api/bootstrap')).json();
     assert.equal(owner.isOwner, true);
