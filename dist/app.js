@@ -403,17 +403,17 @@ function weaponKind(w) {
     weaponGroups.find(([label]) => w['Weapon Type']?.startsWith(label)) || ['其他', 'other', '◇']
   );
 }
-function weaponTag(w) {
+function weaponTag(w, quantity = 1) {
   const [label, key, glyph] = weaponKind(w);
-  return `<button class="chip weapon-chip weapon-${key}" data-weapon="${w.system_id}">${glyph} <span>${esc(w['Weapon Name'])}</span><small class="weapon-kind">${label}</small></button>`;
+  return `<button class="chip weapon-chip weapon-${key}" data-weapon="${w.system_id}">${glyph} <span>${esc(w['Weapon Name'])}</span>${quantity > 1 ? `<b class="weapon-quantity">× ${quantity}</b>` : ''}<small class="weapon-kind">${label}</small></button>`;
 }
-function groupedWeapons(rows) {
+function groupedWeapons(rows, equippedIds = []) {
   return (
     weaponGroups
       .map(([label, key, glyph]) => {
         const items = rows.filter((w) => weaponKind(w)[1] === key);
         return items.length
-          ? `<section class="equipped-group weapon-group-${key}"><h4>${glyph} ${label}</h4><div class="chips">${items.map(weaponTag).join('')}</div></section>`
+          ? `<section class="equipped-group weapon-group-${key}"><h4>${glyph} ${label}</h4><div class="chips">${items.map((w) => weaponTag(w, equippedIds.filter((id) => id === w.system_id).length || 1)).join('')}</div></section>`
           : '';
       })
       .join('') || '<small class="muted">尚未裝備武器</small>'
@@ -426,7 +426,10 @@ function dashboard(r, s) {
     `<div class="folio-heading"><div><span class="eyebrow">READY FOR ADVENTURE</span><h2>冒險裝備</h2></div><span class="seal">${esc(r.Level)}<small>LEVEL</small></span></div>${identityCards(r)}<h3 class="stat-label">六項屬性</h3>${attributes(r)}<section class="loadout-block"><div class="row"><h3><i class="marker violet"></i>法術 Spell</h3><small>已學 ${ids(r.Spells).length} / ${esc(r['Available Spell Slots'])}</small></div><div class="chips">${spellTags(
       data.spell.filter((x) => ids(r.Spells).includes(x.system_id)),
       school['Main Spell'],
-    )}</div></section><section class="loadout-block"><h3><i class="marker amber"></i>武器 Weapon</h3>${groupedWeapons(data.weapon.filter((w) => ids(r.Weapons).includes(w.system_id)))}</section><section class="loadout-block"><h3><i class="marker teal"></i>職業能力</h3><div class="chips">${
+    )}</div></section><section class="loadout-block"><h3><i class="marker amber"></i>武器 Weapon</h3>${groupedWeapons(
+      data.weapon.filter((w) => ids(r.Weapons).includes(w.system_id)),
+      ids(r.Weapons),
+    )}</section><section class="loadout-block"><h3><i class="marker teal"></i>職業能力</h3><div class="chips">${
       Array.from({ length: +r.Level }, (_, i) => ({
         level: i + 1,
         body: cl[`Level ${i + 1} Perk`],
@@ -460,7 +463,11 @@ function dashboard(r, s) {
 let teammate = null,
   teamTab = '數值';
 function team() {
-  if (!teammate) teammate = characters[0].system_id;
+  if (!characters.some((c) => c.system_id === teammate)) teammate = characters[0]?.system_id;
+  if (!teammate) {
+    $('#content').innerHTML = '<p class="empty">目前沒有同行角色。</p>';
+    return;
+  }
   const c = find('character', teammate),
     st = stateFor(teammate),
     cl = find('class', c.Class);
@@ -471,7 +478,10 @@ function team() {
         : `<div class="team-vitals"><div><span class="vital-sigil" aria-hidden="true">❖</span><small>生命 HP</small><strong>${st.hp} <em>/ ${esc(c['Max Health'])}</em></strong></div><div><span class="vital-sigil" aria-hidden="true">⬡</span><small>臨時生命</small><strong>${st.temp}</strong></div><div><span class="vital-sigil" aria-hidden="true">✧</span><small>意志</small><strong>${st.will} <em>/ ${esc(c['Max Willpower'])}</em></strong></div></div>${combatStats(c)}${attributes(c)}<p class="muted">待結算傷口：${st.wounds.length} 筆${st.wounds.length ? ' · ' + st.wounds.reduce((a, b) => a + b, 0) + ' 傷害' : ''}</p><div class="identity-links"><button data-class="${esc(c.Class)}">${esc(cl['Class Name (Chinese)'])}</button><button data-school="${esc(c.School)}">${esc(find('school', c.School)['School Name (Chinese)'])}</button></div><h3>法術 Spell</h3><div class="chips">${spellTags(
             data.spell.filter((x) => ids(c.Spells).includes(x.system_id)),
             find('school', c.School)['Main Spell'],
-          )}</div><h3>武器 Weapon</h3>${groupedWeapons(data.weapon.filter((w) => ids(c.Weapons).includes(w.system_id)))}<small class="muted">背包與私人筆記不顯示於隊伍角色卡。</small>`
+          )}</div><h3>武器 Weapon</h3>${groupedWeapons(
+            data.weapon.filter((w) => ids(c.Weapons).includes(w.system_id)),
+            ids(c.Weapons),
+          )}<small class="muted">背包與私人筆記不顯示於隊伍角色卡。</small>`
     }</section>`;
   $$('[data-teammate]').forEach(
     (b) =>
@@ -550,10 +560,29 @@ function schoolCodex() {
 let archiveTab = '職業與法源道';
 function codex() {
   schoolCodex();
-  const labels = ['職業與法源道', '出身', '信仰', '武器'];
+  const labels = ['職業與法源道', '出身', '信仰', '武器', '冒險須知'];
   const tabs = `<div class="archive-tabs" role="tablist" aria-label="典籍分類">${labels.map((label) => `<button role="tab" aria-selected="${label === archiveTab}" data-archive="${label}" class="${label === archiveTab ? 'active' : ''}">${label}</button>`).join('')}</div>`;
   if (archiveTab === '職業與法源道') $('.codex-cover').insertAdjacentHTML('afterend', tabs);
-  else {
+  else if (archiveTab === '冒險須知') {
+    const cover = $('.codex-cover').outerHTML;
+    $('#content').innerHTML =
+      cover +
+      tabs +
+      '<div class="catalog-heading"><h3>冒險須知</h3><small>規則、玩法與世界資訊</small></div><input id="infoSearch" aria-label="搜尋冒險須知" placeholder="搜尋玩法與資訊…"><div id="infoArticles"></div>';
+    const paint = () => {
+      const q = $('#infoSearch').value.trim().toLowerCase();
+      $('#infoArticles').innerHTML =
+        (data.info || [])
+          .filter((r) => (r.Name + ' ' + r.Content).toLowerCase().includes(q))
+          .map(
+            (r) =>
+              `<details class="info-article"><summary>${esc(r.Name)}</summary><div class="prose">${esc(r.Content)}</div></details>`,
+          )
+          .join('') || '<p class="empty">沒有符合的資訊。</p>';
+    };
+    $('#infoSearch').oninput = paint;
+    paint();
+  } else {
     const cover = $('.codex-cover').outerHTML;
     $('#content').innerHTML =
       cover +

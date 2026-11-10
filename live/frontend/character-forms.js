@@ -43,6 +43,7 @@ function spellPicker(root, rows, core, initial, slots) {
   const chosen = new Set(initial.filter((id) => rows.some((sp) => sp.system_id === id)));
   if (rows.some((sp) => sp.system_id === core)) chosen.add(core);
   const paint = () => {
+    hideSpellPreview();
     root.innerHTML = `<div class="row"><h3>✧ 法術契印</h3><span class="tag" aria-live="polite">已選 ${chosen.size} / ${slots}</span></div><p class="muted">點選候選法術加入右欄；點選已選法術可移回。核心法術固定佔一個名額。</p><div class="spell-ledger"><section><h4>候選法術</h4><div class="spell-choices">${
       rows
         .filter((sp) => !chosen.has(sp.system_id))
@@ -58,6 +59,7 @@ function spellPicker(root, rows, core, initial, slots) {
       paintLore(b, schoolKey(find('spell', b.dataset.pick).School));
       b.onclick = () => {
         const id = b.dataset.pick;
+        if (id === core) return;
         if (chosen.has(id)) chosen.delete(id);
         else if (chosen.size < slots) chosen.add(id);
         else {
@@ -67,9 +69,10 @@ function spellPicker(root, rows, core, initial, slots) {
         paint();
       };
     });
+    wireSpellPreview(root);
   };
   function tile(sp, selected) {
-    return `<button type="button" class="spell-choice ${sp.system_id === core ? 'core-spell' : ''}" data-pick="${esc(sp.system_id)}" ${sp.system_id === core ? 'disabled' : ''} aria-label="${selected ? '移除' : '選擇'}${esc(sp['Spell Name (Chinese)'])}"><strong>${esc(sp['Spell Name (Chinese)'])}</strong><small>${sp.system_id === core ? '✦ 核心' : selected ? '← 移回候選' : '加入 →'}</small><span>${esc(sp['Action Type'] || '')} · ${esc(sp.Target || '')}</span></button>`;
+    return `<button type="button" class="spell-choice ${sp.system_id === core ? 'core-spell' : ''}" data-pick="${esc(sp.system_id)}" ${sp.system_id === core ? 'aria-disabled="true"' : ''} aria-pressed="${selected}" aria-label="${selected ? '移除' : '選擇'}${esc(sp['Spell Name (Chinese)'])}"><strong>${esc(sp['Spell Name (Chinese)'])}</strong><small>${sp.system_id === core ? '✦ 核心' : selected ? '← 移回候選' : '加入 →'}</small><span>${esc(sp['Action Type'] || '')} · ${esc(sp.Target || '')}</span></button>`;
   }
   paint();
   return () => [...chosen];
@@ -270,9 +273,10 @@ function openGrowth() {
   $('#growthPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 function openAdmin() {
+  const resourceRetries = new Map();
   const d = modal(
     'DM · 戰役典章',
-    `<h3>戰役</h3>${live.campaigns.map((c) => `<div class="row"><span>${esc(c.name)} ${c.active ? '（啟用）' : ''}</span><button data-activate="${esc(c.id)}">${c.active ? '停用' : '啟用'}</button></div>`).join('')}<h3>隊伍</h3><button id="restAll">全隊長休 · 恢復意志</button><p class="muted">DM 調整等級；屬性由玩家在中央角色頁分配。成長點於 2／4／6／8 級取得。</p>${characters.map((c) => `<section class="loadout-block"><h3>${esc(c['Character Name'])}</h3><label>等級<select data-level="${esc(c.system_id)}">${Array.from({ length: 8 }, (_, i) => `<option value="${i + 1}" ${Number(c.Level) === i + 1 ? 'selected' : ''}>等級 ${i + 1} · ${Math.floor((i + 1) / 2)} 成長點</option>`).join('')}</select></label><label>已學法術名額<input data-slots="${esc(c.system_id)}" type="number" min="1" max="100" value="${esc(c['Available Spell Slots'])}"></label><label><input style="width:auto" data-editclass="${esc(c.system_id)}" type="checkbox" ${perm(c.system_id).classUnlocked ? 'checked' : ''}> 開放一次職業／法源道修改</label><label><input style="width:auto" data-editspells="${esc(c.system_id)}" type="checkbox" ${perm(c.system_id).spellsUnlocked ? 'checked' : ''}> 開放一次重選法術</label><button data-adminsave="${esc(c.system_id)}">儲存角色設定</button></section>`).join('')}`,
+    `<h3>戰役</h3>${live.campaigns.map((c) => `<div class="row"><span>${esc(c.name)} ${c.active ? '（啟用）' : ''}</span><button data-activate="${esc(c.id)}">${c.active ? '停用' : '啟用'}</button></div>`).join('')}<h3>隊伍</h3><button id="restAll">全隊長休 · 恢復意志</button><p class="muted">DM 調整等級；屬性由玩家在中央角色頁分配。成長點於 2／4／6／8 級取得。</p>${characters.map((c) => `<section class="loadout-block"><h3>${esc(c['Character Name'])}</h3><div class="admin-resources"><label>目前生命<input data-resource-hp="${esc(c.system_id)}" type="number" min="-100000" max="100000" step="1" value="${stateFor(c.system_id).hp}"></label><label>目前意志<input data-resource-will="${esc(c.system_id)}" type="number" min="0" max="100000" step="1" value="${stateFor(c.system_id).will}"></label><button data-resource-save="${esc(c.system_id)}">調整生命與意志</button><small>可超過角色上限；生命可為負值。臨時生命與傷口保留。</small></div><label>等級<select data-level="${esc(c.system_id)}">${Array.from({ length: 8 }, (_, i) => `<option value="${i + 1}" ${Number(c.Level) === i + 1 ? 'selected' : ''}>等級 ${i + 1} · ${Math.floor((i + 1) / 2)} 成長點</option>`).join('')}</select></label><label>已學法術名額<input data-slots="${esc(c.system_id)}" type="number" min="1" max="100" value="${esc(c['Available Spell Slots'])}"></label><label><input style="width:auto" data-editclass="${esc(c.system_id)}" type="checkbox" ${perm(c.system_id).classUnlocked ? 'checked' : ''}> 開放一次職業／法源道修改</label><label><input style="width:auto" data-editspells="${esc(c.system_id)}" type="checkbox" ${perm(c.system_id).spellsUnlocked ? 'checked' : ''}> 開放一次重選法術</label><button data-adminsave="${esc(c.system_id)}">儲存角色設定</button></section>`).join('')}`,
   );
   $$('[data-activate]').forEach(
     (b) =>
@@ -304,6 +308,60 @@ function openAdmin() {
       $('#manageMessage').textContent = e.message;
     }
   };
+  $$('[data-resource-save]').forEach(
+    (button) =>
+      (button.onclick = async () => {
+        const id = button.dataset.resourceSave;
+        if (
+          !$(`[data-resource-hp="${id}"]`).value.trim() ||
+          !$(`[data-resource-will="${id}"]`).value.trim()
+        ) {
+          $('#manageMessage').textContent = '請填寫生命與意志數值';
+          return;
+        }
+        const command = {
+          kind: 'adjust',
+          hp: Number($(`[data-resource-hp="${id}"]`).value),
+          will: Number($(`[data-resource-will="${id}"]`).value),
+        };
+        if (
+          !Number.isSafeInteger(command.hp) ||
+          !Number.isSafeInteger(command.will) ||
+          command.will < 0
+        ) {
+          $('#manageMessage').textContent = '請輸入整數生命與非負整數意志';
+          return;
+        }
+        let operation = resourceRetries.get(id);
+        if (!operation || JSON.stringify(operation.command) !== JSON.stringify(command)) {
+          operation = { operationId: crypto.randomUUID(), command };
+          resourceRetries.set(id, operation);
+        }
+        button.disabled = true;
+        const previous = stateFor(id).hp;
+        try {
+          const result = await api(`/api/characters/${id}/resource`, {
+            method: 'POST',
+            body: operation,
+          });
+          state.characters[id] = result.state;
+          live.permissions[id].version = result.version;
+          resourceRetries.delete(id);
+          undo = null;
+          render();
+          $(`[data-resource-hp="${id}"]`).value = result.state.hp;
+          $(`[data-resource-will="${id}"]`).value = result.state.will;
+          $('#manageMessage').textContent = '生命與意志已儲存';
+          saved();
+          if (id === selected && result.state.hp < previous && !result.replayed)
+            animateResourceFeedback('damage');
+        } catch (e) {
+          $('#manageMessage').textContent = e.message + '；可按相同按鈕重試';
+        } finally {
+          button.disabled = false;
+        }
+      }),
+  );
   $$('[data-adminsave]').forEach(
     (b) =>
       (b.onclick = async () => {
@@ -330,4 +388,121 @@ function openAdmin() {
         }
       }),
   );
+}
+
+let spellPreviewHideTimer;
+function hideSpellPreview() {
+  clearTimeout(spellPreviewHideTimer);
+  const preview = $('#spellPreview');
+  if (preview?.matches(':popover-open')) preview.hidePopover();
+}
+function wireSpellPreview(root) {
+  const dialog = root.closest('dialog');
+  if (!dialog) return;
+  let preview = dialog.querySelector('#spellPreview');
+  if (!preview) {
+    preview = document.createElement('aside');
+    preview.id = 'spellPreview';
+    preview.setAttribute('popover', 'manual');
+    preview.setAttribute('role', 'tooltip');
+    dialog.append(preview);
+    dialog.onclose = hideSpellPreview;
+    dialog.onkeydown = (e) => {
+      if (e.key === 'Escape' && preview.matches(':popover-open')) {
+        e.preventDefault();
+        hideSpellPreview();
+      }
+    };
+  }
+  const hide = () => {
+    spellPreviewHideTimer = setTimeout(hideSpellPreview, 100);
+  };
+  const show = (button) => {
+    clearTimeout(spellPreviewHideTimer);
+    const spell = find('spell', button.dataset.pick),
+      school = find('school', spell.School),
+      cl = find('class', school.Class);
+    preview.innerHTML = `<h3>${esc(spell['Spell Name (Chinese)'])}</h3><p class="muted">${esc(cl['Class Name (Chinese)'])} · ${esc(school['School Name (Chinese)'])}</p><p>${esc(spell['Action Type'] || '')} · ${esc(spell.Target || '')}</p><div class="prose">${esc(spell['Spell Desc'] || '尚未填寫法術描述')}</div>`;
+    paintLore(preview, schoolKey(spell.School));
+    if (!preview.matches(':popover-open')) preview.showPopover();
+    const anchor = button.getBoundingClientRect(),
+      rect = preview.getBoundingClientRect();
+    preview.style.left =
+      Math.max(12, Math.min(innerWidth - rect.width - 12, anchor.left - rect.width - 14)) + 'px';
+    preview.style.top = Math.max(12, Math.min(innerHeight - rect.height - 12, anchor.top)) + 'px';
+  };
+  preview.onpointerenter = () => clearTimeout(spellPreviewHideTimer);
+  preview.onpointerleave = hide;
+  root.querySelectorAll('[data-pick]').forEach((button) => {
+    button.setAttribute('aria-describedby', 'spellPreview');
+    button.onpointerenter = () => show(button);
+    button.onfocus = () => show(button);
+    button.onpointerleave = hide;
+    button.onblur = hide;
+  });
+}
+function openLoadout() {
+  if (!perm().edit) return;
+  const id = selected,
+    version = perm().version,
+    character = find('character', id);
+  const counts = new Map();
+  for (const weapon of ids(character.Weapons)) counts.set(weapon, (counts.get(weapon) || 0) + 1);
+  const isAvailable = (value) => ![false, 0, 'FALSE', 'false'].includes(value);
+  const weapons = data.weapon.filter((w) => counts.has(w.system_id) || isAvailable(w.Available));
+  for (const weapon of counts.keys())
+    if (!weapons.some((w) => w.system_id === weapon))
+      weapons.push({ system_id: weapon, 'Weapon Name': weapon, 'Weapon Type': '既有裝備' });
+  const selectedBeliefs = new Set(ids(character.Beliefs)),
+    beliefs = data.beliefs.filter((b) => selectedBeliefs.has(b.system_id) || isAvailable(b.Enable));
+  for (const belief of selectedBeliefs)
+    if (!beliefs.some((b) => b.system_id === belief))
+      beliefs.push({ system_id: belief, Name: belief });
+  const d = modal(
+    '調整武器與信仰',
+    `<section><h3>攜帶武器</h3><p class="muted">填寫每種武器數量；可攜帶多把同款武器，0 代表移除。</p><div class="loadout-quantities">${weapons.map((w) => `<label><span>${esc(w['Weapon Name'])}<small>${esc(w['Weapon Type'] || '')}</small></span><input data-weapon-quantity="${esc(w.system_id)}" aria-label="${esc(w['Weapon Name'])}數量" type="number" min="0" max="1000" step="1" value="${counts.get(w.system_id) || 0}"></label>`).join('')}</div></section><section><h3>信仰</h3><p class="muted">可保留多個信仰；此處不會更換職業、法源道或法術。</p><div class="loadout-beliefs">${beliefs.map((b) => `<label class="belief-option"><input type="checkbox" data-loadout-belief="${esc(b.system_id)}" ${selectedBeliefs.has(b.system_id) ? 'checked' : ''}><span>${esc(chineseName(b.Name))}<small>${esc(b.Title || '')}</small></span></label>`).join('')}</div></section><button id="saveLoadout" class="ritual-submit">儲存武器與信仰</button>`,
+  );
+  d.querySelectorAll('[data-loadout-belief]').forEach((n) =>
+    paintLore(n.closest('label'), BELIEF_KEYS[n.dataset.loadoutBelief] || 'neutral'),
+  );
+  const button = $('#saveLoadout');
+  button.onclick = async () => {
+    if ([...d.querySelectorAll('[data-weapon-quantity]')].some((n) => !n.value.trim())) {
+      $('#manageMessage').textContent = '請填寫武器數量；0 代表移除';
+      return;
+    }
+    const quantities = [...d.querySelectorAll('[data-weapon-quantity]')].map((n) => ({
+      id: n.dataset.weaponQuantity,
+      quantity: Number(n.value),
+    }));
+    if (
+      quantities.some((w) => !Number.isSafeInteger(w.quantity) || w.quantity < 0) ||
+      quantities.reduce((n, w) => n + w.quantity, 0) > 1000
+    ) {
+      $('#manageMessage').textContent = '武器數量須為非負整數，總數最多 1000';
+      return;
+    }
+    button.disabled = true;
+    try {
+      await api(`/api/characters/${id}/loadout`, {
+        method: 'PATCH',
+        body: {
+          version,
+          weapons: quantities.filter((w) => w.quantity > 0),
+          beliefs: [...d.querySelectorAll('[data-loadout-belief]:checked')].map(
+            (n) => n.dataset.loadoutBelief,
+          ),
+        },
+      });
+      undo = null;
+      await reloadLive();
+      d.close();
+      saved();
+      toast('武器與信仰已更新');
+    } catch (e) {
+      $('#manageMessage').textContent = e.message;
+    } finally {
+      button.disabled = false;
+    }
+  };
 }

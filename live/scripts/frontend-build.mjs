@@ -22,12 +22,19 @@ export function buildApp(source, { state, notes, forms, motion }) {
   return `${app}\n${forms}\n${motion}\n
 const originalRender = render;
 render = function () {
-  originalRender();
+  syncCharacterSelection();
+  if (!selected) {
+    $('#status').innerHTML='<div class="empty">你尚未擁有目前戰役的角色。</div>';
+    $('#tabs').innerHTML='';
+    if(page==='典籍') codex();
+    else if(page==='隊伍') team();
+    else $('#content').innerHTML='<div class="empty">你尚未擁有目前戰役的角色。</div>';
+    wireDetails();
+  } else originalRender();
   protectUI();
   renderGrowthPanel();
 };
-protectUI();
-renderGrowthPanel();
+render();
 `;
 }
 

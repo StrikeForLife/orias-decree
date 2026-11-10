@@ -57,6 +57,10 @@ npx wrangler@4 d1 migrations apply oria-decree --config wrangler.production.loca
 
 `0003_normalize_core.sql` 的欄位映射、私人副本演練、驗收及各階段回退條件見 [D1 正規化方案](D1-NORMALIZATION.md)。先在隔離資料庫比對資料及 API；舊 JSON 和回退快照在驗收前保留。正式 migration 及部署仍由管理者分開手動執行。
 
+## 戰役操作及資訊頁
+
+`0004_campaign_controls.sql` 的欄位、原資料保留、資訊 CSV、測試及回退條件見 [戰役操作與冒險須知](CAMPAIGN-CONTROLS.md)。先獨立套用已審查的 migration，再發布新版 Worker；workflow 不代為遷移或匯入資料。
+
 ## 失敗與回退
 
 - **測試／build 失敗**：不會部署；在新分支修正，再走 PR。

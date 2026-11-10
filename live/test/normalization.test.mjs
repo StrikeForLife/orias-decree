@@ -8,7 +8,8 @@ import { documents } from '../scripts/normalization-schema.mjs';
 import {
   legacySchema,
   migrateAndCompare,
-  compareBootstrapAPIs,
+  applyFollowupMigrations,
+  compareBootstrapAPIs as compareCoreAPIs,
   legacyReads,
 } from '../scripts/rehearse-normalization.mjs';
 import { createHandler } from '../server/worker.mjs';
@@ -19,6 +20,14 @@ const migration = fs.readFileSync(
   new URL('../migrations/0003_normalize_core.sql', import.meta.url),
   'utf8',
 );
+
+// The core 0003 checks remain unchanged; current Worker APIs also need the
+// additive feature schema before exercising legacy-vs-normalized reads.
+async function compareBootstrapAPIs(db, ...args) {
+  if (!db.raw.prepare("SELECT 1 FROM sqlite_schema WHERE name='archive_info'").get())
+    applyFollowupMigrations(db);
+  return compareCoreAPIs(db, ...args);
+}
 
 test('checked-in D1 migration matches the field mapping generator', () =>
   assert.equal(migration, normalizationSQL()));
@@ -360,6 +369,41 @@ test('catalog arrays retain legacy insertion order after unrelated content is ad
         );
     migrateAndCompare(db);
     assert.equal(await compareBootstrapAPIs(db), 8);
+  } finally {
+    db.close();
+  }
+});
+
+test('followup rehearsal preserves original columns and only permits the declared info API additions', async () => {
+  const db = fixture();
+  try {
+    migrateAndCompare(db);
+    assert.deepEqual(applyFollowupMigrations(db), ['0004_campaign_controls.sql']);
+    assert.equal(
+      db.raw.prepare("SELECT quantity FROM character_weapons WHERE character_id='hero'").get()
+        .quantity,
+      1,
+    );
+    const handler = createHandler();
+    const oldContract = async (req, env) => {
+      const response = await handler(req, env),
+        body = await response.json();
+      if (body.data) delete body.data.info;
+      if (body.catalog) body.catalog = body.catalog.filter((x) => x.kind !== 'info');
+      return new Response(JSON.stringify(body), { status: response.status });
+    };
+    await assert.rejects(compareCoreAPIs(db, oldContract), /API body mismatch/);
+    assert.equal(await compareCoreAPIs(db, oldContract, { allowAddedInfo: true }), 8);
+    const changedCharacter = async (req, env) => {
+      const response = await oldContract(req, env),
+        body = await response.json();
+      if (body.data?.character.length) body.data.character[0].Level = '999';
+      return new Response(JSON.stringify(body), { status: response.status });
+    };
+    await assert.rejects(
+      compareCoreAPIs(db, changedCharacter, { allowAddedInfo: true }),
+      /API body mismatch/,
+    );
   } finally {
     db.close();
   }

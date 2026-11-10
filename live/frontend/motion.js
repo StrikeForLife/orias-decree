@@ -11,7 +11,7 @@ function animateSurface(element, frames, options = {}) {
   activeMotions.set(element, animation);
 }
 function animateResourceFeedback(kind) {
-  if (kind === 'damage')
+  if (kind === 'damage' || kind === 'settle')
     animateSurface(
       $('#status .vitality-chamber'),
       [
@@ -23,7 +23,8 @@ function animateResourceFeedback(kind) {
       ],
       { duration: 520 },
     );
-  if (kind === 'pray')
+  if (kind === 'pray') {
+    prayerSparks();
     animateSurface(
       $('#status .will-chamber'),
       [
@@ -37,7 +38,38 @@ function animateResourceFeedback(kind) {
       ],
       { duration: 720 },
     );
+  }
 }
+function prayerSparks() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const chamber = $('#status .will-chamber');
+  if (!chamber) return;
+  for (let i = 0; i < 14; i++) {
+    const spark = document.createElement('span');
+    spark.className = 'prayer-spark';
+    spark.textContent = i % 3 ? '✦' : '✧';
+    spark.setAttribute('aria-hidden', 'true');
+    chamber.append(spark);
+    const angle = (i / 14) * Math.PI * 2,
+      distance = 38 + (i % 4) * 13;
+    const animation = spark.animate(
+      [
+        { opacity: 0, transform: 'translate(-50%,-50%) scale(.2)' },
+        { opacity: 1, offset: 0.18 },
+        {
+          opacity: 0,
+          transform: `translate(calc(-50% + ${Math.cos(angle) * distance}px),calc(-50% + ${Math.sin(angle) * distance}px)) scale(.3) rotate(${i * 37}deg)`,
+        },
+      ],
+      { duration: 650, delay: (i % 4) * 35, easing: 'ease-out', fill: 'both' },
+    );
+    animation.finished.then(
+      () => spark.remove(),
+      () => spark.remove(),
+    );
+  }
+}
+
 // Observe content replacement, not form typing or style changes.
 new MutationObserver(() =>
   animateSurface($('#detail'), [

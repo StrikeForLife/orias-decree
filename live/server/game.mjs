@@ -51,6 +51,11 @@ export function applyResource(state, sheet, command) {
       if (s.hp > 0) fail(409, '目前角色沒有昏迷');
       s.hp = Math.ceil(Number(sheet['Max Health']) / 10);
       break;
+    case 'adjust':
+      if (command.hp === undefined && command.will === undefined) fail(400, '缺少資源調整');
+      if (command.hp !== undefined) s.hp = integer(command.hp, -100000, 100000);
+      if (command.will !== undefined) s.will = integer(command.will, 0, 100000);
+      break;
     case 'rest':
       s.will = Number(sheet['Max Willpower']);
       break;

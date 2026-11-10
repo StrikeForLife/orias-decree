@@ -90,6 +90,40 @@ export function migrateAndCompare(db) {
   }
 }
 
+/** Current APIs may require later additive migrations. Apply them only in the
+ * isolated copy, verifying every pre-existing column and record stays intact. */
+export function applyFollowupMigrations(db) {
+  const names = fs
+    .readdirSync(folder)
+    .filter((name) => name.endsWith('.sql') && name > '0003_normalize_core.sql')
+    .sort();
+  const before = tableSnapshot(db),
+    columns = {};
+  for (const name of Object.keys(before))
+    columns[name] = db.raw
+      .prepare(`PRAGMA table_info("${name.replaceAll('"', '""')}")`)
+      .all()
+      .map((c) => '"' + c.name.replaceAll('"', '""') + '"')
+      .join(',');
+  db.raw.exec('BEGIN IMMEDIATE');
+  try {
+    for (const name of names) db.raw.exec(fs.readFileSync(new URL(name, folder), 'utf8'));
+    for (const [name, rows] of Object.entries(before))
+      assert.deepEqual(
+        db.raw
+          .prepare(`SELECT ${columns[name]} FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`)
+          .all(),
+        rows,
+        'Followup changed original records',
+      );
+    db.raw.exec('COMMIT');
+  } catch (e) {
+    db.raw.exec('ROLLBACK');
+    throw e;
+  }
+  return names;
+}
+
 /** Exercise the same protected endpoints with legacy storage vs normalized
  * storage. This adapter changes only SELECT source names, never auth or writes.
  */
@@ -106,7 +140,11 @@ export function legacyReads(db) {
   };
 }
 
-export async function compareBootstrapAPIs(db, baselineHandler = createHandler()) {
+export async function compareBootstrapAPIs(
+  db,
+  baselineHandler = createHandler(),
+  { allowAddedInfo = false } = {},
+) {
   const handler = createHandler();
   const current = {
     DB: db,
@@ -141,7 +179,19 @@ export async function compareBootstrapAPIs(db, baselineHandler = createHandler()
         assert.equal(a.status, expected, 'Legacy API authentication or probe failed');
         assert.equal(b.status, expected, 'Normalized API authentication or probe failed');
         assert.equal(b.status, a.status, 'API status mismatch');
-        assert.deepEqual(await b.json(), await a.json(), 'API body mismatch');
+        const actual = await b.json(),
+          expectedBody = await a.json();
+        if (allowAddedInfo) {
+          if (actual.data && !Object.hasOwn(expectedBody.data || {}, 'info'))
+            delete actual.data.info;
+          if (
+            actual.catalog &&
+            expectedBody.catalog &&
+            !expectedBody.catalog.some((x) => x.kind === 'info')
+          )
+            actual.catalog = actual.catalog.filter((x) => x.kind !== 'info');
+        }
+        assert.deepEqual(actual, expectedBody, 'API body mismatch');
         responses++;
       }
     }
@@ -161,10 +211,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     db.raw.exec(fs.readFileSync(path.resolve(input), 'utf8'));
     const report = migrateAndCompare(db);
+    report.followupMigrations = applyFollowupMigrations(db);
     const baseline = process.argv[3]
       ? await import(pathToFileURL(path.resolve(process.argv[3])).href)
       : null;
-    report.bootstrapResponsesCompared = await compareBootstrapAPIs(db, baseline?.createHandler());
+    report.bootstrapResponsesCompared = await compareBootstrapAPIs(db, baseline?.createHandler(), {
+      allowAddedInfo:
+        !!baseline && report.followupMigrations.includes('0004_campaign_controls.sql'),
+    });
+    report.expectedApiAdditions =
+      baseline && report.followupMigrations.includes('0004_campaign_controls.sql')
+        ? ['data.info', 'owner.catalog:info']
+        : [];
     report.apiBaseline = baseline ? 'previous-worker' : 'legacy-storage';
     report.acceptance = report.issues.length ? 'REVIEW_REQUIRED' : 'READY_FOR_OWNER_VALIDATION';
     console.log(JSON.stringify(report, null, 2));

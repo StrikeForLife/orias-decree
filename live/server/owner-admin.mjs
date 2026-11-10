@@ -1,3 +1,4 @@
+import { archiveInfo, ownerInfo } from './archive-info.mjs';
 import { fail } from './auth.mjs';
 import { integer, text, splitIds } from './game.mjs';
 
@@ -93,10 +94,13 @@ const nameOf = (p) =>
   p.system_id;
 
 async function catalog(db) {
-  return (await rows(db, 'SELECT * FROM normalized_definitions ORDER BY kind,id')).map((r) => ({
-    ...r,
-    payload: JSON.parse(r.payload),
-  }));
+  return [
+    ...(await rows(db, 'SELECT * FROM normalized_definitions ORDER BY kind,id')).map((r) => ({
+      ...r,
+      payload: JSON.parse(r.payload),
+    })),
+    ...(await archiveInfo(db, true)),
+  ];
 }
 
 /** All references count, including archived definitions and inactive campaigns. */
@@ -244,6 +248,7 @@ export async function ownerRoutes(req, env, s, path, b) {
       ),
       audit: await rows(db, 'SELECT * FROM owner_audit ORDER BY created_at DESC,id LIMIT 100'),
     });
+  if (req.method === 'POST' && bodyIsInfo(path, b)) return ownerInfo(db, s, path, b, commit);
   if (path === '/api/owner/content' && req.method === 'POST') {
     const kind = text(b.kind, 30),
       id = text(b.id, 100),
@@ -478,4 +483,10 @@ export async function ownerRoutes(req, env, s, path, b) {
     return result({ ok: true, id });
   }
   fail(404, '找不到此管理操作');
+}
+
+function bodyIsInfo(path, body) {
+  return (
+    body?.kind === 'info' && ['/api/owner/content', '/api/owner/content/archive'].includes(path)
+  );
 }
