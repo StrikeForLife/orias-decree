@@ -192,11 +192,36 @@ function protectUI() {
 const controls = document.createElement('div');
 controls.className = 'live-controls';
 controls.innerHTML =
-  '<button id="refreshLive">重新載入 <span id="reloadSpinner" class="reload-spinner" aria-hidden="true" hidden></span></button><span id="reloadStatus" class="reload-status" role="status" aria-live="polite"></span><button id="retrySave" hidden>重試未確認操作</button><button id="newCharacter">建立角色</button><button id="reselectCharacter" hidden>修改角色選擇</button><button id="editLoadout" hidden>調整武器／信仰</button><button id="growthCharacter" hidden>分配成長點</button><button id="adminPanel">DM 管理</button><button id="ownerConsoleButton" hidden>✺ 典藏管理室</button><button id="logout">登出</button>';
-$('.heading').append(controls);
+  '<button id="refreshLive">重新載入 <span id="reloadSpinner" class="reload-spinner" aria-hidden="true" hidden></span></button><span id="reloadStatus" class="reload-status" role="status" aria-live="polite"></span><button id="retrySave" hidden>重試未確認操作</button><button id="newCharacter">建立角色</button><button id="reselectCharacter" hidden>修改角色選擇</button><button id="editLoadout" hidden>調整武器／信仰</button><button id="growthCharacter" hidden>分配成長點</button><button id="adminPanel">DM 管理</button><button id="ownerConsoleButton" hidden>典藏管理室</button><button id="logout">登出</button>';
+const toolbar = $('.heading > .row');
+toolbar.classList.add('adventure-toolbar');
+toolbar.prepend(controls);
+$('#save').textContent = '已連線至伺服器';
+const actionGlyphs = {
+  refreshLive: '⟳',
+  retrySave: '↻',
+  newCharacter: '✦',
+  reselectCharacter: '⚔',
+  editLoadout: '⚒',
+  growthCharacter: '✧',
+  adminPanel: '♜',
+  ownerConsoleButton: '✺',
+  logout: '↗',
+};
+for (const [id, glyph] of Object.entries(actionGlyphs)) {
+  const button = $('#' + id),
+    icon = document.createElement('span');
+  icon.className = 'action-glyph';
+  icon.textContent = glyph;
+  icon.setAttribute('aria-hidden', 'true');
+  button.prepend(icon);
+}
 $('#newCharacter').hidden = !['player', 'dm'].includes(live.role);
 $('#adminPanel').hidden = !live.isDM;
-$('#refreshLive').onclick = () => reloadLive().catch((e) => toast(e.message));
+$('#refreshLive').onclick = () =>
+  reloadLive()
+    .then(() => toast('重新載入完成'))
+    .catch((e) => toast(e.message));
 $('#retrySave').onclick = async () => {
   if (!retryOperation) return;
   const r = retryOperation;

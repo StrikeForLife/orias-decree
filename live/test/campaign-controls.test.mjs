@@ -404,6 +404,8 @@ test('wound settlement shares HP feedback, prayer emits sparks, and reduced moti
         return { cancel() {}, finished: Promise.resolve() };
       },
       append: (n) => particles.push(n),
+      querySelector: () => null,
+      clientHeight: 200,
     };
     const context = {
       WeakMap,
@@ -416,12 +418,17 @@ test('wound settlement shares HP feedback, prayer emits sparks, and reduced moti
       document: {
         querySelector: () => ({ addEventListener() {} }),
         addEventListener() {},
-        createElement: () => ({ setAttribute() {}, animate: surface.animate, remove() {} }),
+        createElement: () => ({
+          style: {},
+          setAttribute() {},
+          animate: surface.animate,
+          remove() {},
+        }),
       },
     };
     vm.runInNewContext(source, context);
     vm.runInNewContext("animateResourceFeedback('settle')", context);
-    assert.equal(animations.length, reduce ? 0 : 1);
+    assert.equal(animations.length, reduce ? 0 : 2);
     animations.length = 0;
     vm.runInNewContext("animateResourceFeedback('stop')", context);
     assert.equal(animations.length, 0);

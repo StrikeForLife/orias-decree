@@ -124,37 +124,6 @@
   height: 22px;
   cursor: pointer;
 }
-.creation-identities {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-.creation-identities > label {
-  padding: 16px 12px;
-  border: 1px solid var(--lore-accent);
-  border-top: 3px double var(--lore-accent);
-  border-radius: 20px 20px 2px 2px;
-  background: radial-gradient(ellipse at top, var(--lore-fill), #172124);
-  color: var(--lore-light);
-  font: 17px serif;
-}
-.creation-identities select {
-  display: block;
-  width: 100%;
-  margin-top: 12px;
-  color: var(--lore-light);
-  border-color: var(--lore-accent);
-  font: 14px system-ui;
-}
-.choice-description {
-  font: 12px/1.8 system-ui;
-  color: var(--lore-accent);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-bottom: 0;
-}
 .spell-ledger {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -278,9 +247,6 @@
   color: #d7ab8e;
 }
 @media (max-width: 700px) {
-  .creation-identities {
-    grid-template-columns: 1fr;
-  }
   .stat-sliders {
     grid-template-columns: 1fr;
   }
@@ -389,13 +355,6 @@ dialog[open]::backdrop {
   animation: reload-spin 0.8s linear infinite;
   vertical-align: middle;
 }
-.reload-status {
-  flex-basis: 100%;
-  text-align: right;
-  color: var(--muted);
-  font-size: 11px;
-  min-height: 1.5em;
-}
 @keyframes reload-spin {
   to {
     transform: rotate(360deg);
@@ -460,52 +419,430 @@ dialog[open]::backdrop {
 .admin-resources > small {
   grid-column: 1 / -1;
 }
-.loadout-quantities {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  max-height: 300px;
-  overflow: auto;
+/* One engraved command rail keeps campaign controls together at every width. */
+.heading > .adventure-toolbar {
+  position: relative;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 9px 5px;
+  border-block: 1px solid #bba16c55;
+  scrollbar-width: thin;
+  background: linear-gradient(90deg, #c9ab6820, transparent 45%, #c9ab6810);
 }
-.loadout-quantities label {
+.adventure-toolbar .live-controls {
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+.adventure-toolbar :is(button, select) {
+  flex: 0 0 auto;
+  min-height: 40px;
+  white-space: nowrap;
+  border: 1px solid #bba16c66;
+  border-radius: 2px 10px 2px 2px;
+  padding: 8px 11px;
+  background: linear-gradient(135deg, #bba16c24, #172124);
+  color: #e9d8af;
+  box-shadow: inset 0 0 0 3px #bba16c0c;
+  font: 12px/1.5 serif;
+  letter-spacing: 0.5px;
+}
+.adventure-toolbar button:is(:hover, :focus-visible) {
+  border-color: #e0c484;
+  background: linear-gradient(135deg, #bba16c55, #273435);
+  box-shadow:
+    inset 0 0 0 3px #bba16c18,
+    0 0 12px #bba16c15;
+}
+.action-glyph {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--accent);
+  font: 16px/1 serif;
+}
+.adventure-toolbar #save {
+  order: 1;
+  font-size: 10px;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.adventure-toolbar #logout {
+  color: var(--muted);
+}
+.reload-status,
+.choice-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.prayer-spark {
+  font: 22px/1 serif;
+  color: #ffe8a6;
+  text-shadow:
+    0 0 5px #fff,
+    0 0 12px #e0b3ff,
+    0 0 22px #d9b35d;
+  z-index: 5;
+}
+.creation-identities {
+  display: block;
+}
+.identity-picker,
+.weapon-picker,
+.belief-picker {
+  margin: 24px 0;
+  padding-top: 18px;
+  border-top: 3px double #bba16c66;
+}
+.picker-heading {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 10px;
-  border: 1px solid #a9925e55;
+  margin-bottom: 15px;
 }
-.loadout-quantities small,
-.belief-option small {
+.picker-heading h3 {
+  margin: 0;
+  font: 22px serif;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+.identity-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 340px;
+  overflow: auto;
+  padding: 4px;
+}
+.identity-option {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  padding: 16px 12px;
+  min-width: 0;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--lore-accent) 45%, transparent);
+  border-top: 3px double var(--lore-accent);
+  border-radius: 16px 2px 2px 2px;
+  background: linear-gradient(135deg, var(--lore-fill), #172124);
+  color: var(--lore-light);
+}
+.choice-crest {
+  font: 26px serif;
+  color: var(--lore-accent);
+}
+.choice-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.choice-copy strong {
+  font: 17px/1.5 serif;
+}
+.choice-copy small {
+  color: var(--lore-accent);
+}
+.choice-copy > span {
+  font: 11px/1.7 system-ui;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.choice-mark {
+  margin-left: auto;
+  color: var(--lore-light);
+  opacity: 0;
+}
+.identity-option:has(input:checked) {
+  border-color: var(--lore-accent);
+  box-shadow:
+    inset 0 0 0 2px var(--lore-fill),
+    0 0 12px var(--lore-fill);
+  background: radial-gradient(ellipse at top left, var(--lore-fill), #263439);
+}
+.identity-option:has(input:checked) .choice-mark {
+  opacity: 1;
+}
+.identity-option:has(input:focus-visible) {
+  outline: 2px solid var(--lore-light);
+  outline-offset: 2px;
+}
+.identity-option:hover {
+  border-color: var(--lore-accent);
+}
+.identity-option:has(input:disabled) {
+  cursor: default;
+  opacity: 0.7;
+}
+.identity-reading {
+  max-height: 150px;
+  overflow: auto;
+  margin: 12px 4px 0;
+  border-left: 2px solid #bba16c88;
+  padding: 8px 14px;
+  font: 12px/1.8 system-ui;
+  color: var(--muted);
+}
+.weapon-type-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0 18px;
+  overflow-x: auto;
+  padding: 3px;
+}
+.weapon-type-tabs button {
+  flex: 0 0 auto;
+  border-radius: 2px;
+  background: #172124;
+  color: var(--muted);
+  font: 14px serif;
+}
+.weapon-type-tabs [aria-selected='true'] {
+  border-color: var(--accent);
+  color: #f1d59b;
+  background: linear-gradient(145deg, #78623866, #172124);
+  box-shadow: inset 0 -3px #c6a566;
+}
+.weapon-ledger > section {
+  min-width: 0;
+}
+.weapon-ledger h4 {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font: 16px serif;
+  letter-spacing: 2px;
+}
+.weapon-choice,
+.carried-weapon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 11px;
+  background: linear-gradient(135deg, #a9873e18, #172124);
+  border: 1px solid #b9a36b66;
+  border-left: 3px solid #b9a36b;
+  border-radius: 2px 12px 2px 2px;
+  text-align: left;
+  color: var(--weapon-tone, #e4ce9c);
+  border-color: var(--weapon-tone, #b9a36b);
+  background: linear-gradient(135deg, var(--weapon-fill, #3b3223), #172124);
+}
+.weapon-glyph {
+  font: 22px serif;
+  color: var(--weapon-tone, #d8b76b);
+}
+.weapon-choice strong,
+.carried-weapon strong {
+  font: 16px serif;
+}
+.weapon-choice small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+}
+.weapon-choice > span:last-child {
+  width: 100%;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: pre-line;
+}
+.carried-weapon {
+  flex-wrap: nowrap;
+}
+.carried-weapon > div {
+  flex: 1;
+  min-width: 0;
+}
+.carried-weapon small {
   display: block;
   font-size: 10px;
   color: var(--muted);
 }
-.loadout-quantities input {
-  width: 75px;
-  flex-shrink: 0;
+.carried-weapon label {
+  width: 62px;
+  flex: 0 0 62px;
+  margin: 0;
+  font-size: 10px;
 }
-.loadout-beliefs {
+.carried-weapon input {
+  width: 100%;
+  padding: 7px;
+  margin: 3px 0 0;
+}
+.carried-weapon button {
+  padding: 5px;
+  background: transparent;
+  border-color: transparent;
+}
+[aria-invalid='true'] {
+  outline: 2px solid #efb0a2;
+}
+.belief-choice-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
-.belief-option {
+.belief-choice {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 300px;
+  padding: 34px 12px 18px;
+  border-radius: 70px 70px 3px 3px;
+  border: 1px solid var(--lore-accent);
+  color: var(--lore-light);
+  background: radial-gradient(ellipse at 50% 20%, var(--lore-fill), #131d20 90%);
+  box-shadow:
+    inset 0 0 0 5px #131d20,
+    inset 0 0 0 6px var(--lore-fill);
+}
+.belief-choice-portrait {
+  position: absolute;
+  z-index: -1;
+  inset: 18px 0 auto;
+  width: 100%;
+  height: 150px;
+  object-fit: contain;
+  opacity: 0.5;
+  mask-image: linear-gradient(#000 70%, transparent);
+}
+.belief-choice-sigil {
+  display: grid;
+  place-items: center;
+  height: 130px;
+  flex: 0 0 130px;
+  font: 42px/1.5 serif;
+  color: var(--lore-accent);
+  text-shadow: 0 0 20px var(--lore-fill);
+}
+.belief-choice:has(img) .belief-choice-sigil {
+  display: grid;
+  place-items: center;
+  height: 130px;
+  flex: 0 0 130px;
+  opacity: 0.35;
+}
+.belief-choice strong {
+  font: 24px/1.5 serif;
+  letter-spacing: 4px;
+  text-shadow: 0 2px 5px #000;
+}
+.belief-choice-title {
+  font: 12px/1.5 serif;
+  min-height: 1.5em;
+}
+.belief-choice-mark {
+  border-top: 1px solid var(--lore-accent);
+  margin-top: 8px;
+  padding-top: 9px;
+  width: 85%;
+  font-size: 12px;
+}
+.belief-choice[aria-pressed='true'] {
+  border-width: 2px;
+  box-shadow:
+    inset 0 0 0 5px #131d20,
+    inset 0 0 0 6px var(--lore-accent),
+    0 0 20px var(--lore-fill);
+}
+.belief-choice[aria-pressed='true'] .belief-choice-portrait {
+  opacity: 0.95;
+}
+.belief-choice[aria-pressed='true'] .belief-choice-mark {
+  color: var(--lore-light);
+  background: var(--lore-fill);
+}
+.belief-choice:is(:hover, :focus-visible) {
+  border-color: var(--lore-light);
+  background: radial-gradient(ellipse at top, var(--lore-fill), #263439);
+}
+.chosen-beliefs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+  min-height: 35px;
+}
+.chosen-belief {
+  padding: 5px 13px;
   border: 1px solid var(--lore-accent);
   background: var(--lore-fill);
   color: var(--lore-light);
+  font: 14px serif;
 }
-.belief-option input {
-  width: auto;
+.belief-reading {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border-left: 2px solid var(--lore-accent);
+  color: var(--lore-light);
+  font-size: 12px;
+}
+.belief-reading:empty {
+  display: none;
 }
 @media (max-width: 700px) {
-  .loadout-quantities,
-  .loadout-beliefs {
+  #manageDialog {
+    padding: 18px;
+  }
+  .identity-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .belief-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .belief-choice {
+    min-height: 280px;
+  }
+  .belief-choice-sigil {
+    height: 110px;
+    flex-basis: 110px;
+  }
+  .belief-choice-portrait {
+    height: 130px;
+  }
+  .belief-choice strong {
+    font-size: 20px;
+    letter-spacing: 2px;
+  }
+}
+@media (max-width: 430px) {
+  .identity-options {
     grid-template-columns: 1fr;
   }
+  .weapon-ledger {
+    grid-template-columns: 1fr;
+  }
+}
+.prayer-halo {
+  position: absolute;
+  left: 50%;
+  width: 96px;
+  height: 96px;
+  border: 2px solid #ffdf95;
+  border-radius: 50%;
+  box-shadow:
+    0 0 18px #d2afff,
+    inset 0 0 18px #e6c78399;
+  pointer-events: none;
+  z-index: 4;
 }

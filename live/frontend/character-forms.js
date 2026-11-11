@@ -77,69 +77,122 @@ function spellPicker(root, rows, core, initial, slots) {
   paint();
   return () => [...chosen];
 }
+// Native radio groups provide single selection and arrow-key navigation.
+function identityPicker(root, kind, rows, selectedId, onChange, disabled = false) {
+  const labels = { class: ['職業', '⚔'], school: ['法源道', '✧'], background: ['出身', '⌖'] };
+  const [label, glyph] = labels[kind];
+  root.innerHTML = `<div class="picker-heading"><h3>${glyph} ${label}</h3><span class="tag">擇一</span></div><div class="identity-options" role="radiogroup" aria-label="${label}">${
+    rows
+      .map((row) => {
+        const id = row.system_id,
+          title =
+            kind === 'class'
+              ? row['Class Name (Chinese)']
+              : kind === 'school'
+                ? row['School Name (Chinese)']
+                : chineseName(row.Name),
+          subtitle =
+            kind === 'class'
+              ? row['Short Desc']
+              : kind === 'school'
+                ? row.Title
+                : row['Main Branch'],
+          desc = kind === 'class' ? row['Class Desc'] : row.Desc;
+        return `<label class="identity-option"><input class="choice-input" type="radio" name="${root.id}" value="${esc(id)}" ${id === selectedId ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="choice-crest" aria-hidden="true">${glyph}</span><span class="choice-copy"><strong>${esc(title)}</strong><small>${esc(subtitle || '')}</small><span>${esc(desc || '從這裡開始你的旅途。')}</span></span><span class="choice-mark" aria-hidden="true">✦</span></label>`;
+      })
+      .join('') || '<p class="empty">目前沒有可選條目。</p>'
+  }</div><div class="identity-reading prose" aria-live="polite"></div>`;
+  const reading = root.querySelector('.identity-reading');
+  const describe = (id) => {
+    const row = rows.find((row) => row.system_id === id);
+    reading.textContent = row
+      ? (kind === 'class' ? row['Class Desc'] : row.Desc) ||
+        (kind === 'school' ? row.Title : '') ||
+        ''
+      : '';
+    reading.hidden = !reading.textContent;
+  };
+  root.querySelectorAll('.identity-option').forEach((tile) => {
+    const input = tile.querySelector('input'),
+      id = input.value;
+    paintLore(
+      tile,
+      kind === 'class'
+        ? classKeys(id)
+        : kind === 'school'
+          ? schoolKey(id)
+          : originKey(find('background', id)['Main Branch']),
+    );
+    input.onchange = () => {
+      describe(id);
+      onChange(id);
+    };
+  });
+  describe(selectedId);
+}
 function openCharacterForm() {
   const classes = data.class.filter((c) => !c['Class Name (Chinese)'].includes('未開放'));
+  let classId = classes[0]?.system_id,
+    schoolId,
+    backgroundId = data.background[0]?.system_id;
   const d = modal(
     '締結冒險者之名',
-    `<label>角色名稱<input id="createName" maxlength="100" placeholder="寫下你的名字…"></label><div class="creation-identities"><label id="classChoice">⚔ 職業<select id="createClass">${classes.map((c) => `<option value="${esc(c.system_id)}">${esc(c['Class Name (Chinese)'])}</option>`).join('')}</select><p class="choice-description"></p></label><label id="schoolChoice">✧ 法源道<select id="createSchool"></select><p class="choice-description"></p></label><label id="backgroundChoice">⌖ 出身<select id="createBackground">${data.background.map((b) => `<option value="${esc(b.system_id)}">${esc(chineseName(b.Name))}</option>`).join('')}</select><p class="choice-description"></p></label></div><section class="allocation-section"><div class="row"><h3>六項天賦</h3><span id="creationBudget" class="tag" aria-live="polite"></span></div><p class="muted">由 −1 開始，共 14 點；降低屬性可換回點數。最低 −3，至多一項 +4，其餘最多 +3。</p>${statSliders('createattr', Object.fromEntries(attributesList.map(([, k]) => [k, -1])), () => 4)}</section><section id="createSpells"></section><label>角色故事<textarea id="createStory" rows="4" placeholder="你的旅途從何處開始…"></textarea></label><button id="createSubmit" class="ritual-submit">✦ 建立角色</button>`,
+    `<label>角色名稱<input id="createName" maxlength="100" placeholder="寫下你的名字…"></label><div class="creation-identities"><section id="createClass" class="identity-picker"></section><section id="createSchool" class="identity-picker"></section><section id="createBackground" class="identity-picker"></section></div><section class="allocation-section"><div class="row"><h3>六項天賦</h3><span id="creationBudget" class="tag" aria-live="polite"></span></div><p class="muted">由 −1 開始，共 14 點；降低屬性可換回點數。最低 −3，至多一項 +4，其餘最多 +3。</p>${statSliders('createattr', Object.fromEntries(attributesList.map(([, k]) => [k, -1])), () => 4)}</section><section id="createSpells"></section><label>角色故事<textarea id="createStory" rows="4" placeholder="你的旅途從何處開始…"></textarea></label><button id="createSubmit" class="ritual-submit">✦ 建立角色</button>`,
   );
   let getSpells = () => [];
   const budget = () => {
     const values = $$('[data-createattr]').map((n) => Number(n.value)),
       remaining = 14 - values.reduce((sum, n) => sum + n + 1, 0);
     $('#creationBudget').textContent = `剩餘 ${remaining} / 14 點`;
-    $('#createSubmit').disabled = remaining !== 0 || values.filter((n) => n === 4).length > 1;
-  };
-  wireSliders(d, budget);
-  const colour = () => {
-    const cl = find('class', $('#createClass').value),
-      sc = find('school', $('#createSchool').value),
-      bg = find('background', $('#createBackground').value);
-    paintLore($('#classChoice'), classKeys(cl.system_id));
-    paintLore($('#schoolChoice'), schoolKey(sc.system_id));
-    paintLore($('#backgroundChoice'), originKey(bg['Main Branch']));
-    $('#classChoice .choice-description').textContent = cl['Short Desc'] || cl['Class Desc'] || '';
-    $('#schoolChoice .choice-description').textContent = sc.Title || sc.Desc || '';
-    $('#backgroundChoice .choice-description').textContent = bg['Main Branch'] || bg.Desc || '';
+    $('#createSubmit').disabled =
+      !classId ||
+      !schoolId ||
+      !backgroundId ||
+      remaining !== 0 ||
+      values.filter((n) => n === 4).length > 1;
   };
   const spells = () => {
-    const sc = find('school', $('#createSchool').value);
+    const sc = find('school', schoolId);
     getSpells = spellPicker(
       $('#createSpells'),
-      candidateIds($('#createClass').value, sc.system_id),
+      candidateIds(classId, schoolId),
       sc['Main Spell'],
       [],
       4,
     );
-    colour();
+    budget();
   };
   const schools = () => {
-    $('#createSchool').innerHTML = data.school
-      .filter(
-        (sc) =>
-          sc.Class === $('#createClass').value && !sc['School Name (Chinese)'].includes('未開放'),
-      )
-      .map(
-        (sc) => `<option value="${esc(sc.system_id)}">${esc(sc['School Name (Chinese)'])}</option>`,
-      )
-      .join('');
+    const rows = data.school.filter(
+      (sc) => sc.Class === classId && !sc['School Name (Chinese)'].includes('未開放'),
+    );
+    schoolId = rows[0]?.system_id;
+    identityPicker($('#createSchool'), 'school', rows, schoolId, (id) => {
+      schoolId = id;
+      spells();
+    });
     spells();
   };
-  $('#createClass').onchange = schools;
-  $('#createSchool').onchange = spells;
-  $('#createBackground').onchange = colour;
+  identityPicker($('#createClass'), 'class', classes, classId, (id) => {
+    classId = id;
+    schools();
+  });
+  identityPicker($('#createBackground'), 'background', data.background, backgroundId, (id) => {
+    backgroundId = id;
+    budget();
+  });
   schools();
+  wireSliders(d, budget);
   $('#createSubmit').onclick = async () => {
-    const button = $('#createSubmit');
-    button.disabled = true;
+    $('#createSubmit').disabled = true;
     try {
       const r = await api('/api/characters', {
         method: 'POST',
         body: {
           name: $('#createName').value,
-          classId: $('#createClass').value,
-          schoolId: $('#createSchool').value,
-          backgroundId: $('#createBackground').value,
+          classId,
+          schoolId,
+          backgroundId,
           base: Object.fromEntries(
             $$('[data-createattr]').map((n) => [n.dataset.createattr, Number(n.value)]),
           ),
@@ -162,59 +215,67 @@ function openReselect() {
     p = perm(),
     id = selected,
     version = p.version;
+  let classId = r.Class,
+    schoolId = r.School,
+    getSpells;
   const d = modal(
     '重訂職業與法術',
-    `<p>DM 已開放一次修改；提交成功後重新鎖定。</p><label>職業<select id="reClass" ${p.editClass ? '' : 'disabled'}>${data.class
-      .filter((c) => !c['Class Name (Chinese)'].includes('未開放'))
-      .map(
-        (c) =>
-          `<option value="${esc(c.system_id)}" ${c.system_id === r.Class ? 'selected' : ''}>${esc(c['Class Name (Chinese)'])}</option>`,
-      )
-      .join(
-        '',
-      )}</select></label><label>法源道<select id="reSchool" ${p.editClass ? '' : 'disabled'}></select></label><section id="reSpells"></section><button id="reSubmit" class="ritual-submit">✦ 提交並鎖定</button>`,
+    '<p>DM 已開放一次修改；提交成功後重新鎖定。</p><section id="reClass" class="identity-picker"></section><section id="reSchool" class="identity-picker"></section><section id="reSpells"></section><button id="reSubmit" class="ritual-submit">✦ 提交並鎖定</button>',
   );
-  let getSpells;
-  function spells() {
-    const sc = find('school', $('#reSchool').value);
+  const spells = () => {
+    const sc = find('school', schoolId);
     getSpells = spellPicker(
       $('#reSpells'),
-      candidateIds($('#reClass').value, sc.system_id),
+      candidateIds(classId, schoolId),
       sc['Main Spell'],
       ids(r.Spells),
       Number(r['Available Spell Slots']),
     );
-  }
-  function schools() {
-    $('#reSchool').innerHTML = data.school
-      .filter(
-        (sc) => sc.Class === $('#reClass').value && !sc['School Name (Chinese)'].includes('未開放'),
-      )
-      .map(
-        (sc) =>
-          `<option value="${esc(sc.system_id)}" ${sc.system_id === r.School ? 'selected' : ''}>${esc(sc['School Name (Chinese)'])}</option>`,
-      )
-      .join('');
+  };
+  const schools = () => {
+    const rows = data.school.filter(
+      (sc) => sc.Class === classId && !sc['School Name (Chinese)'].includes('未開放'),
+    );
+    if (!rows.some((sc) => sc.system_id === schoolId)) schoolId = rows[0]?.system_id;
+    identityPicker(
+      $('#reSchool'),
+      'school',
+      rows,
+      schoolId,
+      (value) => {
+        schoolId = value;
+        spells();
+      },
+      !p.editClass,
+    );
     spells();
-  }
-  $('#reClass').onchange = schools;
-  $('#reSchool').onchange = spells;
+  };
+  identityPicker(
+    $('#reClass'),
+    'class',
+    data.class.filter((c) => !c['Class Name (Chinese)'].includes('未開放')),
+    classId,
+    (value) => {
+      classId = value;
+      schools();
+    },
+    !p.editClass,
+  );
   schools();
   $('#reSubmit').onclick = async () => {
+    const button = $('#reSubmit');
+    button.disabled = true;
     try {
       await api(`/api/characters/${id}/reselect`, {
         method: 'POST',
-        body: {
-          version,
-          classId: $('#reClass').value,
-          schoolId: $('#reSchool').value,
-          spells: getSpells(),
-        },
+        body: { version, classId, schoolId, spells: getSpells() },
       });
       await reloadLive();
       d.close();
     } catch (e) {
       $('#manageMessage').textContent = e.message;
+    } finally {
+      button.disabled = false;
     }
   };
 }
@@ -445,54 +506,211 @@ function openLoadout() {
   if (!perm().edit) return;
   const id = selected,
     version = perm().version,
-    character = find('character', id);
-  const counts = new Map();
+    character = find('character', id),
+    counts = new Map();
   for (const weapon of ids(character.Weapons)) counts.set(weapon, (counts.get(weapon) || 0) + 1);
   const isAvailable = (value) => ![false, 0, 'FALSE', 'false'].includes(value);
   const weapons = data.weapon.filter((w) => counts.has(w.system_id) || isAvailable(w.Available));
   for (const weapon of counts.keys())
     if (!weapons.some((w) => w.system_id === weapon))
-      weapons.push({ system_id: weapon, 'Weapon Name': weapon, 'Weapon Type': '既有裝備' });
+      weapons.push({
+        system_id: weapon,
+        'Weapon Name': weapon,
+        'Weapon Type': '既有裝備',
+        Available: false,
+      });
   const selectedBeliefs = new Set(ids(character.Beliefs)),
     beliefs = data.beliefs.filter((b) => selectedBeliefs.has(b.system_id) || isAvailable(b.Enable));
   for (const belief of selectedBeliefs)
     if (!beliefs.some((b) => b.system_id === belief))
       beliefs.push({ system_id: belief, Name: belief });
   const d = modal(
-    '調整武器與信仰',
-    `<section><h3>攜帶武器</h3><p class="muted">填寫每種武器數量；可攜帶多把同款武器，0 代表移除。</p><div class="loadout-quantities">${weapons.map((w) => `<label><span>${esc(w['Weapon Name'])}<small>${esc(w['Weapon Type'] || '')}</small></span><input data-weapon-quantity="${esc(w.system_id)}" aria-label="${esc(w['Weapon Name'])}數量" type="number" min="0" max="1000" step="1" value="${counts.get(w.system_id) || 0}"></label>`).join('')}</div></section><section><h3>信仰</h3><p class="muted">可保留多個信仰；此處不會更換職業、法源道或法術。</p><div class="loadout-beliefs">${beliefs.map((b) => `<label class="belief-option"><input type="checkbox" data-loadout-belief="${esc(b.system_id)}" ${selectedBeliefs.has(b.system_id) ? 'checked' : ''}><span>${esc(chineseName(b.Name))}<small>${esc(b.Title || '')}</small></span></label>`).join('')}</div></section><button id="saveLoadout" class="ritual-submit">儲存武器與信仰</button>`,
+    '行裝與誓約',
+    `<section class="weapon-picker"><div class="picker-heading"><h3>⚔ 兵器契藏</h3><span id="weaponTotal" class="tag" aria-live="polite"></span></div><p class="muted">按分類挑選武器加入行裝；同款可攜帶多把，在右欄調整數量。</p><div id="weaponTypes" class="weapon-type-tabs" role="tablist" aria-label="武器分類"></div><div class="spell-ledger weapon-ledger"><section id="weaponCandidates" role="tabpanel"><h4>可選兵器</h4><div class="spell-choices"></div></section><section><h4>攜帶行裝</h4><div id="carriedWeapons" class="spell-choices"></div></section></div></section><section class="belief-picker"><div class="picker-heading"><h3>✺ 諸神與誓約</h3><span id="beliefTotal" class="tag" aria-live="polite"></span></div><p class="muted">點選神像締結或解除信仰，可同時保留多個誓約。</p><div id="chosenBeliefs" class="chosen-beliefs" aria-live="polite"></div><div class="belief-choice-grid">${beliefs
+      .map((b) => {
+        const key = BELIEF_KEYS[b.system_id];
+        return `<button type="button" class="belief-choice" data-loadout-belief="${esc(b.system_id)}" aria-pressed="${selectedBeliefs.has(b.system_id)}">${key ? `<img class="belief-choice-portrait" src="oria/${esc(key)}.png" alt="" loading="lazy">` : ''}<span class="belief-choice-sigil" aria-hidden="true">✺</span><strong>${esc(chineseName(b.Name))}</strong><span class="belief-choice-title">${esc(b.Title || '')}</span><span class="belief-choice-mark">${selectedBeliefs.has(b.system_id) ? '✦ 已締結' : '◇ 締結誓約'}</span></button>`;
+      })
+      .join(
+        '',
+      )}</div><div id="beliefReading" class="belief-reading prose" aria-live="polite"></div></section><button id="saveLoadout" class="ritual-submit">✦ 儲存行裝與誓約</button>`,
   );
-  d.querySelectorAll('[data-loadout-belief]').forEach((n) =>
-    paintLore(n.closest('label'), BELIEF_KEYS[n.dataset.loadoutBelief] || 'neutral'),
-  );
+  const groups = [
+    ...weaponGroups,
+    ...(weapons.some((w) => weaponKind(w)[1] === 'other') ? [['其他', 'other', '◇']] : []),
+  ];
+  let activeType =
+    groups.find(([, key]) => weapons.some((w) => weaponKind(w)[1] === key))?.[1] || 'main';
+  const total = () => {
+    $('#weaponTotal').textContent = `攜帶 ${[...counts.values()].reduce((n, v) => n + v, 0)} 件`;
+  };
+  const carried = () => {
+    $('#carriedWeapons').innerHTML =
+      weapons
+        .filter((w) => counts.has(w.system_id))
+        .map(
+          (w) =>
+            `<div class="carried-weapon weapon-${weaponKind(w)[1]}"><span class="weapon-glyph" aria-hidden="true">${weaponKind(w)[2]}</span><div><strong>${esc(w['Weapon Name'])}</strong><small>${esc(weaponKind(w)[0])}</small></div><label>數量<input type="number" min="0" max="1000" step="1" data-weapon-quantity="${esc(w.system_id)}" aria-label="${esc(w['Weapon Name'])}數量" value="${counts.get(w.system_id)}"></label><button type="button" data-remove-weapon="${esc(w.system_id)}" aria-label="移除${esc(w['Weapon Name'])}">✕</button></div>`,
+        )
+        .join('') || '<p class="empty">行裝尚無武器<br><small>由左欄加入兵器</small></p>';
+    d.querySelectorAll('[data-weapon-quantity]').forEach((n) => {
+      n.oninput = () => {
+        const value = Number(n.value);
+        if (!n.value.trim() || !Number.isSafeInteger(value) || value < 0 || value > 1000) {
+          n.setAttribute('aria-invalid', 'true');
+          return;
+        }
+        n.removeAttribute('aria-invalid');
+        counts.set(n.dataset.weaponQuantity, value);
+        total();
+      };
+      n.onchange = () => {
+        if (n.value === '0') {
+          counts.delete(n.dataset.weaponQuantity);
+          carried();
+          candidates();
+        }
+      };
+    });
+    d.querySelectorAll('[data-remove-weapon]').forEach(
+      (b) =>
+        (b.onclick = () => {
+          counts.delete(b.dataset.removeWeapon);
+          carried();
+          candidates();
+        }),
+    );
+    total();
+  };
+  const candidates = () => {
+    const focused = document.activeElement?.dataset.addWeapon;
+    $('#weaponCandidates').setAttribute('aria-labelledby', 'weapon-tab-' + activeType);
+    $('#weaponCandidates .spell-choices').innerHTML =
+      weapons
+        .filter((w) => weaponKind(w)[1] === activeType)
+        .map(
+          (w) =>
+            `<button type="button" class="weapon-choice weapon-${activeType}" data-add-weapon="${esc(w.system_id)}"><span class="weapon-glyph" aria-hidden="true">${weaponKind(w)[2]}</span><strong>${esc(w['Weapon Name'])}</strong><small>${counts.get(w.system_id) ? '再加一把 ＋' : '加入行裝 ＋'}</small><span>${esc([w.Damage, w.Effect].filter(Boolean).join(' · ') || '依武器說明使用')}</span></button>`,
+        )
+        .join('') || '<p class="empty">此分類目前沒有可選兵器。</p>';
+    d.querySelectorAll('[data-add-weapon]').forEach(
+      (b) =>
+        (b.onclick = () => {
+          const weapon = b.dataset.addWeapon,
+            amount = counts.get(weapon) || 0,
+            entry = weapons.find((w) => w.system_id === weapon),
+            original = ids(character.Weapons).filter((w) => w === weapon).length;
+          if (!isAvailable(entry.Available) && amount >= original) {
+            $('#manageMessage').textContent = '此既有武器已停用，可保留、減少或移除。';
+            return;
+          }
+          if ([...counts.values()].reduce((n, v) => n + v, 0) >= 1000) {
+            $('#manageMessage').textContent = '武器總數最多 1000';
+            return;
+          }
+          counts.set(weapon, amount + 1);
+          carried();
+          candidates();
+        }),
+    );
+    d.querySelectorAll('[data-weapon-type]').forEach((b) => {
+      const active = b.dataset.weaponType === activeType;
+      b.setAttribute('aria-selected', active);
+      b.tabIndex = active ? 0 : -1;
+    });
+    if (focused)
+      [...d.querySelectorAll('[data-add-weapon]')]
+        .find((b) => b.dataset.addWeapon === focused)
+        ?.focus({ preventScroll: true });
+  };
+  $('#weaponTypes').innerHTML = groups
+    .map(
+      ([label, key, glyph]) =>
+        `<button type="button" role="tab" id="weapon-tab-${key}" aria-controls="weaponCandidates" data-weapon-type="${key}">${glyph} ${label}</button>`,
+    )
+    .join('');
+  const tabs = [...d.querySelectorAll('[data-weapon-type]')];
+  tabs.forEach((b, i) => {
+    b.onclick = () => {
+      activeType = b.dataset.weaponType;
+      candidates();
+    };
+    b.onkeydown = (e) => {
+      const next =
+        e.key === 'ArrowRight'
+          ? (i + 1) % tabs.length
+          : e.key === 'ArrowLeft'
+            ? (i + tabs.length - 1) % tabs.length
+            : e.key === 'Home'
+              ? 0
+              : e.key === 'End'
+                ? tabs.length - 1
+                : null;
+      if (next !== null) {
+        e.preventDefault();
+        tabs[next].click();
+        tabs[next].focus();
+      }
+    };
+  });
+  const beliefSummary = () => {
+    $('#beliefTotal').textContent = `已締結 ${selectedBeliefs.size} 個誓約`;
+    $('#chosenBeliefs').innerHTML =
+      beliefs
+        .filter((b) => selectedBeliefs.has(b.system_id))
+        .map(
+          (b) =>
+            `<span class="chosen-belief" data-chosen-belief="${esc(b.system_id)}">✦ ${esc(chineseName(b.Name))}</span>`,
+        )
+        .join('') || '<span class="muted">尚未締結信仰</span>';
+    d.querySelectorAll('[data-chosen-belief]').forEach((n) =>
+      paintLore(n, BELIEF_KEYS[n.dataset.chosenBelief] || 'neutral'),
+    );
+  };
+  d.querySelectorAll('[data-loadout-belief]').forEach((b) => {
+    const belief = beliefs.find((row) => row.system_id === b.dataset.loadoutBelief);
+    paintLore(b, BELIEF_KEYS[belief.system_id] || 'neutral');
+    b.onclick = () => {
+      if (selectedBeliefs.has(belief.system_id)) selectedBeliefs.delete(belief.system_id);
+      else selectedBeliefs.add(belief.system_id);
+      b.setAttribute('aria-pressed', selectedBeliefs.has(belief.system_id));
+      b.querySelector('.belief-choice-mark').textContent = selectedBeliefs.has(belief.system_id)
+        ? '✦ 已締結'
+        : '◇ 締結誓約';
+      $('#beliefReading').textContent = [
+        chineseName(belief.Name),
+        belief.Desc,
+        belief['Belief Effect 1'],
+        belief['Belief Effect 2'],
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      paintLore($('#beliefReading'), BELIEF_KEYS[belief.system_id] || 'neutral');
+      beliefSummary();
+    };
+  });
+  carried();
+  candidates();
+  beliefSummary();
   const button = $('#saveLoadout');
   button.onclick = async () => {
-    if ([...d.querySelectorAll('[data-weapon-quantity]')].some((n) => !n.value.trim())) {
-      $('#manageMessage').textContent = '請填寫武器數量；0 代表移除';
+    const inputs = [...d.querySelectorAll('[data-weapon-quantity]')];
+    if (inputs.some((n) => !n.value.trim() || n.getAttribute('aria-invalid') === 'true')) {
+      $('#manageMessage').textContent = '請填寫有效的武器數量；0 代表移除';
       return;
     }
-    const quantities = [...d.querySelectorAll('[data-weapon-quantity]')].map((n) => ({
-      id: n.dataset.weaponQuantity,
-      quantity: Number(n.value),
-    }));
-    if (
-      quantities.some((w) => !Number.isSafeInteger(w.quantity) || w.quantity < 0) ||
-      quantities.reduce((n, w) => n + w.quantity, 0) > 1000
-    ) {
-      $('#manageMessage').textContent = '武器數量須為非負整數，總數最多 1000';
+    const quantities = [...counts]
+      .filter(([, quantity]) => quantity > 0)
+      .map(([id, quantity]) => ({ id, quantity }));
+    if (quantities.reduce((n, w) => n + w.quantity, 0) > 1000) {
+      $('#manageMessage').textContent = '武器總數最多 1000';
       return;
     }
     button.disabled = true;
     try {
       await api(`/api/characters/${id}/loadout`, {
         method: 'PATCH',
-        body: {
-          version,
-          weapons: quantities.filter((w) => w.quantity > 0),
-          beliefs: [...d.querySelectorAll('[data-loadout-belief]:checked')].map(
-            (n) => n.dataset.loadoutBelief,
-          ),
-        },
+        body: { version, weapons: quantities, beliefs: [...selectedBeliefs] },
       });
       undo = null;
       await reloadLive();
