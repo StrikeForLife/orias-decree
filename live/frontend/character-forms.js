@@ -687,11 +687,23 @@ function openLoadout() {
         .join('\n\n');
       paintLore($('#beliefReading'), BELIEF_KEYS[belief.system_id] || 'neutral');
       beliefSummary();
+      const chip = [...d.querySelectorAll('[data-chosen-belief]')].find(
+        (n) => n.dataset.chosenBelief === belief.system_id,
+      );
+      animateBeliefSelection(b, selectedBeliefs.has(belief.system_id), chip);
     };
   });
   carried();
   candidates();
   beliefSummary();
+  animateSurface(
+    d.querySelector('.belief-choice-grid'),
+    [
+      { opacity: 0.4, transform: 'translateY(10px)' },
+      { opacity: 1, transform: 'translateY(0)' },
+    ],
+    { duration: 400 },
+  );
   const button = $('#saveLoadout');
   button.onclick = async () => {
     const inputs = [...d.querySelectorAll('[data-weapon-quantity]')];

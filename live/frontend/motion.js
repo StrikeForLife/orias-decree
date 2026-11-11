@@ -10,6 +10,42 @@ function animateSurface(element, frames, options = {}) {
   });
   activeMotions.set(element, animation);
 }
+function animateBeliefSelection(card, chosen, chip) {
+  const style = getComputedStyle(card),
+    accent = style.getPropertyValue('--lore-accent'),
+    shadow = style.boxShadow;
+  animateSurface(
+    card,
+    [
+      { transform: 'scale(1)', boxShadow: shadow },
+      {
+        transform: chosen ? 'scale(1.025)' : 'scale(.98)',
+        boxShadow: chosen ? `${shadow}, 0 0 28px ${accent}` : shadow,
+        offset: 0.4,
+      },
+      { transform: 'scale(1)', boxShadow: shadow },
+    ],
+    { duration: 520 },
+  );
+  animateSurface(
+    card.querySelector('.belief-choice-portrait, .belief-choice-sigil'),
+    [
+      { filter: 'brightness(1)' },
+      { filter: chosen ? 'brightness(1.4)' : 'brightness(.75)', offset: 0.4 },
+      { filter: 'brightness(1)' },
+    ],
+    { duration: 520 },
+  );
+  if (chosen)
+    animateSurface(
+      chip,
+      [
+        { opacity: 0, transform: 'translateY(-6px)' },
+        { opacity: 1, transform: 'translateY(0)' },
+      ],
+      { duration: 300 },
+    );
+}
 function animateResourceFeedback(kind) {
   if (kind === 'damage' || kind === 'settle') {
     animateSurface(

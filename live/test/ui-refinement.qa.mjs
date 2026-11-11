@@ -34,8 +34,46 @@ async function singleRail(page) {
   assert(Math.max(...layout.buttons) - Math.min(...layout.buttons) < 4);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
 }
+function textContrast(foreground, background) {
+  const luminance = (color) =>
+    color
+      .match(/[\d.]+/g)
+      .slice(0, 3)
+      .map(Number)
+      .map((n) => n / 255)
+      .map((n) => (n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4))
+      .reduce((sum, n, i) => sum + n * [0.2126, 0.7152, 0.0722][i], 0);
+  const a = luminance(foreground),
+    b = luminance(background);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
 try {
   const { context, page } = await open();
+  for (const theme of ['blue', 'sand', 'forest', 'ice', 'star']) {
+    await page.selectOption('#theme', theme);
+    const colors = await page.locator('#character, #character option').evaluateAll((nodes) =>
+      nodes.map((n) => {
+        const style = getComputedStyle(n);
+        return {
+          foreground: style.color,
+          background: style.backgroundColor,
+          scheme: style.colorScheme,
+        };
+      }),
+    );
+    for (const color of colors) {
+      assert(
+        !color.background.includes('rgba'),
+        'The native select and options need an opaque background',
+      );
+      assert(
+        textContrast(color.foreground, color.background) >= 4.5,
+        theme + ' character selection must remain readable',
+      );
+      assert.equal(color.scheme, 'dark');
+    }
+  }
+  await page.selectOption('#theme', 'blue');
   // Keep the real Worker and D1-style trigger metadata; add network latency to
   // check that feedback starts on the confirmed response after the final render.
   await page.route('**/api/characters/*/resource', async (route) => {
@@ -119,6 +157,24 @@ try {
   assert((await page.locator('#manageMessage').textContent()).includes('有效'));
   await page.fill('[data-weapon-quantity="blade"]', '2');
   await page.click('[data-loadout-belief="fb43faea"]');
+  const vow = await page.locator('[data-loadout-belief="fb43faea"]').evaluate((card) => {
+    const animation = card
+      .getAnimations()
+      .find((a) => a.effect.getKeyframes().some((f) => f.transform));
+    if (!animation) return null;
+    animation.pause();
+    animation.currentTime = 208;
+    return {
+      scale: new DOMMatrix(getComputedStyle(card).transform).m11,
+      pressed: card.getAttribute('aria-pressed'),
+    };
+  });
+  assert(vow && vow.scale > 1 && vow.pressed === 'true');
+  assert(
+    await page
+      .locator('[data-chosen-belief="fb43faea"]')
+      .evaluate((el) => el.getAnimations().length > 0),
+  );
   await page.click('[data-loadout-belief="368c14c1"]');
   assert.equal(await page.getAttribute('[data-loadout-belief="fb43faea"]', 'aria-pressed'), 'true');
   assert.equal(await page.locator('[data-chosen-belief]').count(), 3);
@@ -148,6 +204,13 @@ try {
   assert.equal(await page.inputValue('[data-weapon-quantity="greatsword"]'), '3');
   await page.click('[data-remove-weapon="greatsword"]');
   await page.click('[data-loadout-belief="fb43faea"]');
+  assert(
+    await page
+      .locator('[data-loadout-belief="fb43faea"]')
+      .evaluate((card) =>
+        card.getAnimations().some((a) => a.effect.getKeyframes().some((f) => f.transform)),
+      ),
+  );
   assert.equal(await page.locator('[data-chosen-belief="fb43faea"]').count(), 0);
   await page.click('#saveLoadout');
   await page.waitForFunction(() => !document.querySelector('#manageDialog').open);
@@ -289,6 +352,14 @@ try {
   );
   assert.equal(
     await reduced.page.locator('.vitality-chamber').evaluate((el) => el.getAnimations().length),
+    0,
+  );
+  await reduced.page.click('#editLoadout');
+  await reduced.page.click('[data-loadout-belief="fb43faea"]');
+  assert.equal(
+    await reduced.page
+      .locator('[data-loadout-belief="fb43faea"]')
+      .evaluate((el) => el.getAnimations().length),
     0,
   );
   await reduced.context.close();
