@@ -456,6 +456,17 @@ dialog[open]::backdrop {
     inset 0 0 0 3px #bba16c18,
     0 0 12px #bba16c15;
 }
+/* Native option popups do not inherit the toolbar's gradient background. */
+#character {
+  color-scheme: dark;
+  background-image: none;
+  background-color: var(--panel);
+  color: var(--text);
+}
+#character option {
+  background-color: var(--panel);
+  color: var(--text);
+}
 .action-glyph {
   display: inline-block;
   margin-right: 6px;
@@ -714,6 +725,9 @@ dialog[open]::backdrop {
   box-shadow:
     inset 0 0 0 5px #131d20,
     inset 0 0 0 6px var(--lore-fill);
+  transition:
+    border-color 220ms ease,
+    box-shadow 220ms ease;
 }
 .belief-choice-portrait {
   position: absolute;
@@ -724,6 +738,9 @@ dialog[open]::backdrop {
   object-fit: contain;
   opacity: 0.5;
   mask-image: linear-gradient(#000 70%, transparent);
+  transition:
+    transform 380ms ease,
+    opacity 220ms ease;
 }
 .belief-choice-sigil {
   display: grid;
@@ -774,6 +791,9 @@ dialog[open]::backdrop {
 .belief-choice:is(:hover, :focus-visible) {
   border-color: var(--lore-light);
   background: radial-gradient(ellipse at top, var(--lore-fill), #263439);
+}
+.belief-choice:is(:hover, :focus-visible) .belief-choice-portrait {
+  transform: scale(1.06) rotate(-3deg);
 }
 .chosen-beliefs {
   display: flex;
@@ -845,4 +865,13 @@ dialog[open]::backdrop {
     inset 0 0 18px #e6c78399;
   pointer-events: none;
   z-index: 4;
+}
+@media (prefers-reduced-motion: reduce) {
+  .belief-choice,
+  .belief-choice-portrait {
+    transition: none;
+  }
+  .belief-choice:is(:hover, :focus-visible) .belief-choice-portrait {
+    transform: none;
+  }
 }

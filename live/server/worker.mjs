@@ -292,7 +292,9 @@ async function resource(db, s, id, b) {
         Date.now(),
       ),
     ]);
-    if (result[0].meta.changes === 1) return { state: next, version: c.version + 1 };
+    // D1 includes normalization-trigger writes in meta.changes. A successful
+    // single-character CAS can therefore report many changes; zero means a miss.
+    if (result[0].meta.changes > 0) return { state: next, version: c.version + 1 };
     c = await character(db, id, s);
     const prior = await stmt(db, 'SELECT * FROM operations WHERE id=?', b.operationId).first();
     if (prior) {
