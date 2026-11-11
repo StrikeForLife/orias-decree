@@ -1,11 +1,12 @@
 // Shared visual controls; the Worker remains authoritative for every allocation.
-function modal(title, html) {
+function modal(title, html, className = '') {
   let d = $('#manageDialog');
   if (!d) {
     d = document.createElement('dialog');
     d.id = 'manageDialog';
     document.body.append(d);
   }
+  d.className = className;
   d.innerHTML = `<form method="dialog" class="ritual-heading"><div><span class="eyebrow">ORIA’S DECREE · 冒險者典章</span><h2>${esc(title)}</h2></div><button aria-label="關閉">✕</button></form>${html}<p id="manageMessage" role="status" aria-live="polite"></p>`;
   if (!d.open) d.showModal();
   return d;
@@ -333,122 +334,390 @@ function openGrowth() {
   render();
   $('#growthPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
+function openPrayer() {
+  if (pending || !perm().edit || current().will < 1) return;
+  const id = selected,
+    character = find('character', id);
+  const beliefs = [...new Set(ids(character.Beliefs))].map((key) => ({
+    system_id: key,
+    Name: key,
+    ...find('beliefs', key),
+  }));
+  if (!beliefs.length)
+    beliefs.push({
+      system_id: '',
+      Name: '自身意志',
+      Quote: '以自身的意志，回應眼前的旅途。',
+      'Belief Effect 1': '此角色尚未指定信仰；祈禱效果請依 DM 裁定。',
+    });
+  let operation =
+    retryOperation?.id === id && retryOperation.command.kind === 'pray' ? retryOperation : null;
+  let chosen = operation?.command.beliefId ?? null,
+    completed = false;
+  const d = modal(
+    '向你的信仰祈禱',
+    `<div class="prayer-introduction"><span class="ritual-star" aria-hidden="true">✺</span><p>選擇你要呼求的信仰</p><small>消耗 1 點意志 · 魅力檢定 DC 9 · 失敗亦消耗</small></div><div class="prayer-row" role="group" aria-label="選擇祈禱信仰">${beliefs.map((b) => `<button type="button" class="belief-choice prayer-card" data-prayer-belief="${esc(b.system_id)}" aria-pressed="false"><span class="prayer-card-crest">${BELIEF_KEYS[b.system_id] ? `<img src="oria/${BELIEF_KEYS[b.system_id]}.png" alt="">` : '<span aria-hidden="true">✺</span>'}</span><strong>${esc(chineseName(b.Name))}</strong><span class="belief-choice-title">${esc(b.Title || '')}</span><span class="prayer-quote">${esc(b.Quote || '以你的意志，向信仰請求力量。')}</span><span class="prayer-effect"><b>祈禱效果一</b>${esc(b['Belief Effect 1'] || '效果請依 DM 裁定。')}</span>${b['Belief Effect 2'] ? `<span class="prayer-effect"><b>祈禱效果二</b>${esc(b['Belief Effect 2'])}</span>` : ''}<span class="belief-choice-mark">選擇此信仰</span></button>`).join('')}</div><div class="prayer-actions"><span id="prayerStatus" role="status">尚未選擇信仰</span><button id="confirmPrayer" class="ritual-submit" disabled>祈禱 · 消耗 1 意志</button><button id="prayerDone" hidden>完成祈禱</button></div>`,
+    'prayer-dialog',
+  );
+  const cards = [...d.querySelectorAll('[data-prayer-belief]')];
+  const choose = (card, motion = true) => {
+    chosen = card.dataset.prayerBelief;
+    for (const tile of cards) {
+      const active = tile === card;
+      tile.setAttribute('aria-pressed', active);
+      tile.querySelector('.belief-choice-mark').textContent = active ? '✓ 已選信仰' : '選擇此信仰';
+    }
+    $('#prayerStatus').textContent =
+      '向' + chineseName(beliefs.find((b) => b.system_id === chosen).Name) + '祈禱';
+    $('#confirmPrayer').disabled = false;
+    if (motion) animateBeliefSelection(card, true);
+  };
+  cards.forEach((card, index) => {
+    paintLore(card, BELIEF_KEYS[card.dataset.prayerBelief] || 'neutral');
+    card.onclick = () => {
+      if (!operation && !completed) choose(card);
+    };
+    card.onkeydown = (e) => {
+      const next =
+        e.key === 'ArrowRight'
+          ? (index + 1) % cards.length
+          : e.key === 'ArrowLeft'
+            ? (index + cards.length - 1) % cards.length
+            : null;
+      if (next !== null) {
+        e.preventDefault();
+        cards[next].focus();
+        cards[next].click();
+      }
+    };
+  });
+  if (operation) {
+    choose(cards.find((c) => c.dataset.prayerBelief === (chosen || '')) || cards[0], false);
+    cards.forEach((c) => (c.disabled = true));
+    $('#confirmPrayer').textContent = '重試未確認的祈禱';
+  }
+  animateSurface(
+    d.querySelector('.prayer-row'),
+    [
+      { opacity: 0, transform: 'translateY(14px)' },
+      { opacity: 1, transform: 'translateY(0)' },
+    ],
+    { duration: 500 },
+  );
+  $('#prayerDone').onclick = () => d.close();
+  const prayerSubmit = $('#confirmPrayer');
+  $('#confirmPrayer').onclick = async () => {
+    if (completed || pending || chosen === null) return;
+    if (!operation) {
+      if (!perm(id).edit || stateFor(id).will < 1) return;
+      operation = {
+        id,
+        before: structuredClone(stateFor(id)),
+        operationId: crypto.randomUUID(),
+        command: { kind: 'pray', ...(chosen ? { beliefId: chosen } : {}) },
+      };
+      stateFor(id).will--;
+    }
+    cards.forEach((c) => (c.disabled = true));
+    $('#confirmPrayer').disabled = true;
+    pending = true;
+    saved('儲存中…');
+    render();
+    const result = await commitResource(
+      id,
+      operation.before,
+      operation.operationId,
+      operation.command,
+    );
+    if (!d.open || !d.contains(prayerSubmit)) return;
+    if (!result) {
+      $('#prayerStatus').textContent = '祈禱紀錄未確認；重試不會重複扣除意志。';
+      $('#confirmPrayer').disabled = false;
+      $('#confirmPrayer').textContent = '重試未確認的祈禱';
+      return;
+    }
+    completed = true;
+    const belief = beliefs.find((b) => b.system_id === chosen) || beliefs[0],
+      card = cards.find((c) => c.dataset.prayerBelief === chosen) || cards[0];
+    $('#prayerStatus').textContent = '祈禱已記錄，請進行魅力檢定 DC 9。';
+    $('#confirmPrayer').hidden = true;
+    $('#prayerDone').hidden = false;
+    showDetail(
+      '祈禱 · ' + chineseName(belief.Name),
+      'Prayer',
+      [
+        belief.Quote,
+        belief['Belief Effect 1'],
+        belief['Belief Effect 2'],
+        '魅力檢定 DC 9；失敗亦消耗意志。',
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+    );
+    if (!result.replayed) {
+      animateBeliefSelection(card, true);
+    }
+    saved();
+  };
+}
 function openAdmin() {
-  const resourceRetries = new Map();
+  const drafts = new Map(),
+    resourceRetries = new Map();
+  let memberId =
+      characters.find((c) => c.system_id === selected)?.system_id || characters[0]?.system_id,
+    busy = false,
+    restOperationId = null;
   const d = modal(
     'DM · 戰役典章',
-    `<h3>戰役</h3>${live.campaigns.map((c) => `<div class="row"><span>${esc(c.name)} ${c.active ? '（啟用）' : ''}</span><button data-activate="${esc(c.id)}">${c.active ? '停用' : '啟用'}</button></div>`).join('')}<h3>隊伍</h3><button id="restAll">全隊長休 · 恢復意志</button><p class="muted">DM 調整等級；屬性由玩家在中央角色頁分配。成長點於 2／4／6／8 級取得。</p>${characters.map((c) => `<section class="loadout-block"><h3>${esc(c['Character Name'])}</h3><div class="admin-resources"><label>目前生命<input data-resource-hp="${esc(c.system_id)}" type="number" min="-100000" max="100000" step="1" value="${stateFor(c.system_id).hp}"></label><label>目前意志<input data-resource-will="${esc(c.system_id)}" type="number" min="0" max="100000" step="1" value="${stateFor(c.system_id).will}"></label><button data-resource-save="${esc(c.system_id)}">調整生命與意志</button><small>可超過角色上限；生命可為負值。臨時生命與傷口保留。</small></div><label>等級<select data-level="${esc(c.system_id)}">${Array.from({ length: 8 }, (_, i) => `<option value="${i + 1}" ${Number(c.Level) === i + 1 ? 'selected' : ''}>等級 ${i + 1} · ${Math.floor((i + 1) / 2)} 成長點</option>`).join('')}</select></label><label>已學法術名額<input data-slots="${esc(c.system_id)}" type="number" min="1" max="100" value="${esc(c['Available Spell Slots'])}"></label><label><input style="width:auto" data-editclass="${esc(c.system_id)}" type="checkbox" ${perm(c.system_id).classUnlocked ? 'checked' : ''}> 開放一次職業／法源道修改</label><label><input style="width:auto" data-editspells="${esc(c.system_id)}" type="checkbox" ${perm(c.system_id).spellsUnlocked ? 'checked' : ''}> 開放一次重選法術</label><button data-adminsave="${esc(c.system_id)}">儲存角色設定</button></section>`).join('')}`,
+    `<details class="dm-campaign"><summary>戰役航路 · ${esc(campaign?.['Campaign Name (Chinese)'] || '目前未啟用戰役')}</summary>${live.campaigns.map((c) => `<div class="row"><span>${esc(c.name)} <small>${c.active ? '啟用中' : '未啟用'}</small></span><button data-activate="${esc(c.id)}">${c.active ? '停用' : '啟用'}</button></div>`).join('')}</details><section class="dm-rest"><div><h3>✧ 全隊長休</h3><p>補滿生命與意志、清除傷口，保留臨時生命。</p></div><button id="restAll" ${campaign && live.role === 'dm' ? '' : 'disabled'}>全隊長休</button><div id="restConfirmation" hidden><p>確認讓目前戰役的全隊成員完成長休？</p><button id="confirmRest" class="ritual-submit">確認全隊長休</button><button id="cancelRest">取消</button></div></section><nav id="dmMemberTabs" class="dm-member-tabs" role="tablist" aria-label="戰役成員"></nav><section id="dmMemberPanel" role="tabpanel"></section>`,
+    'dm-dialog',
   );
-  $$('[data-activate]').forEach(
-    (b) =>
-      (b.onclick = async () => {
-        const c = live.campaigns.find((c) => c.id === b.dataset.activate);
+  const memberPanel = d.querySelector('#dmMemberPanel'),
+    message = d.querySelector('#manageMessage');
+  const isCurrent = () => d.open && d.contains(memberPanel);
+  function draftFor(c) {
+    if (!drafts.has(c.system_id))
+      drafts.set(c.system_id, {
+        hp: stateFor(c.system_id).hp,
+        will: stateFor(c.system_id).will,
+        level: Number(c.Level),
+        slots: Number(c['Available Spell Slots']),
+        editClass: !!perm(c.system_id).classUnlocked,
+        editSpells: !!perm(c.system_id).spellsUnlocked,
+        touched: new Set(),
+      });
+    return drafts.get(c.system_id);
+  }
+  function renderTabs() {
+    if (!isCurrent()) return;
+    $('#dmMemberTabs').innerHTML = characters
+      .map(
+        (c) =>
+          `<button role="tab" id="dm-tab-${esc(c.system_id)}" aria-controls="dmMemberPanel" aria-selected="${c.system_id === memberId}" tabindex="${c.system_id === memberId ? 0 : -1}" data-dm-member="${esc(c.system_id)}">${esc(c['Character Name'])}<small>生命 ${stateFor(c.system_id).hp} · 意志 ${stateFor(c.system_id).will}</small></button>`,
+      )
+      .join('');
+    const tabs = [...d.querySelectorAll('[data-dm-member]')];
+    tabs.forEach((b, i) => {
+      b.disabled = busy;
+      b.onclick = () => {
+        memberId = b.dataset.dmMember;
+        renderTabs();
+        renderMember();
+      };
+      b.onkeydown = (e) => {
+        const index =
+          e.key === 'ArrowRight'
+            ? (i + 1) % tabs.length
+            : e.key === 'ArrowLeft'
+              ? (i + tabs.length - 1) % tabs.length
+              : e.key === 'Home'
+                ? 0
+                : e.key === 'End'
+                  ? tabs.length - 1
+                  : null;
+        if (index !== null) {
+          e.preventDefault();
+          tabs[index].click();
+          d.querySelectorAll('[data-dm-member]')[index].focus();
+        }
+      };
+    });
+  }
+  function renderMember() {
+    if (!isCurrent()) return;
+    const c = characters.find((c) => c.system_id === memberId),
+      panel = $('#dmMemberPanel');
+    if (!c) {
+      panel.innerHTML = '<p class="empty">目前沒有戰役成員。</p>';
+      return;
+    }
+    const id = c.system_id,
+      draft = draftFor(c),
+      hpMax = Number(c['Max Health']),
+      willMax = Number(c['Max Willpower']),
+      validCaps =
+        Number.isSafeInteger(hpMax) && hpMax >= 0 && Number.isSafeInteger(willMax) && willMax >= 0;
+    panel.setAttribute('aria-labelledby', 'dm-tab-' + id);
+    const slider = (key, label, max, min = 0) =>
+      `<label class="dm-slider dm-${key}"><span>${label}<output id="dm-${key}-value">${draft[key]} / ${max}</output></span><input aria-label="${label}" data-resource-${key}="${esc(id)}" type="range" min="${min}" max="${max}" step="1" value="${Math.max(min, Math.min(max, draft[key]))}"><small>${draft[key] > max ? '目前超過上限；手動調整時以上限為準。' : ''}</small><button type="button" data-fill-resource="${key}">回滿${label}</button></label>`;
+    panel.innerHTML = `<div class="dm-member-heading"><h3>${esc(c['Character Name'])}</h3><span>${esc(find('class', c.Class)['Class Name (Chinese)'])} · ${esc(find('school', c.School)['School Name (Chinese)'])}</span><small>臨時生命 ${stateFor(id).temp} · 待結算傷口 ${stateFor(id).wounds.length}</small></div><div class="dm-editor-grid"><div class="dm-resources-pane"><div class="dm-resource-grid">${slider('hp', '生命', validCaps ? hpMax : 0, Math.min(-Math.max(1, hpMax || 0), draft.hp))}${slider('will', '意志', validCaps ? willMax : 0)}</div><button id="dmSaveResources" data-resource-save="${esc(id)}" class="ritual-submit">儲存生命／意志</button></div><section class="dm-settings"><h3>角色成長與許可</h3><label class="dm-slider"><span>等級<output id="dmLevelValue">${draft.level} · ${Math.floor(draft.level / 2)} 成長點</output></span><input type="range" min="1" max="8" step="1" aria-label="等級" data-level="${esc(id)}" value="${draft.level}"></label><p class="muted">更改等級後由玩家分配成長點；不直接改寫六項屬性。</p><label>已學法術名額<input data-slots="${esc(id)}" type="number" min="1" max="100" value="${draft.slots}"></label><label class="dm-permission"><input data-editclass="${esc(id)}" type="checkbox" ${draft.editClass ? 'checked' : ''}> 開放一次職業／法源道修改</label><label class="dm-permission"><input data-editspells="${esc(id)}" type="checkbox" ${draft.editSpells ? 'checked' : ''}> 開放一次重選法術</label><button id="dmSaveSettings" class="ritual-submit" data-adminsave="${esc(id)}">儲存角色設定</button></section></div>`;
+    const editable = live.role === 'dm' && !busy;
+    panel.querySelectorAll('input,button').forEach((n) => (n.disabled = !editable));
+    const updateResourceButton = () => {
+      $('#dmSaveResources').disabled =
+        !editable || !validCaps || !['hp', 'will'].some((k) => draft.touched.has(k));
+    };
+    for (const key of ['hp', 'will']) {
+      const input = panel.querySelector(`[data-resource-${key}]`),
+        max = key === 'hp' ? hpMax : willMax;
+      input.oninput = () => {
+        draft[key] = Number(input.value);
+        draft.touched.add(key);
+        $('#dm-' + key + '-value').textContent = draft[key] + ' / ' + max;
+        resourceRetries.delete(id);
+        updateResourceButton();
+      };
+      panel.querySelector(`[data-fill-resource="${key}"]`).onclick = () => {
+        draft[key] = max;
+        draft.touched.add(key);
+        input.value = max;
+        $('#dm-' + key + '-value').textContent = max + ' / ' + max;
+        resourceRetries.delete(id);
+        updateResourceButton();
+      };
+    }
+    updateResourceButton();
+    panel.querySelector('[data-level]').oninput = (e) => {
+      draft.level = Number(e.target.value);
+      $('#dmLevelValue').textContent =
+        draft.level + ' · ' + Math.floor(draft.level / 2) + ' 成長點';
+    };
+    panel.querySelector('[data-slots]').oninput = (e) => (draft.slots = Number(e.target.value));
+    panel.querySelector('[data-editclass]').onchange = (e) => (draft.editClass = e.target.checked);
+    panel.querySelector('[data-editspells]').onchange = (e) =>
+      (draft.editSpells = e.target.checked);
+    $('#dmSaveResources').onclick = async () => {
+      const command = {
+        kind: 'adjust',
+        ...Object.fromEntries(
+          ['hp', 'will'].filter((k) => draft.touched.has(k)).map((k) => [k, draft[k]]),
+        ),
+      };
+      let operation = resourceRetries.get(id);
+      if (!operation || JSON.stringify(operation.command) !== JSON.stringify(command)) {
+        operation = { operationId: crypto.randomUUID(), command };
+        resourceRetries.set(id, operation);
+      }
+      busy = true;
+      renderTabs();
+      renderMember();
+      try {
+        const result = await api(`/api/characters/${id}/resource`, {
+          method: 'POST',
+          body: operation,
+        });
+        state.characters[id] = result.state;
+        live.permissions[id].version = result.version;
+        resourceRetries.delete(id);
+        draft.hp = result.state.hp;
+        draft.will = result.state.will;
+        draft.touched.clear();
+        undo = null;
+        render();
+        saved();
+        message.textContent = '生命與意志已儲存';
+      } catch (e) {
+        message.textContent = e.message + '；可重試相同調整。';
+      } finally {
+        busy = false;
+        renderTabs();
+        renderMember();
+      }
+    };
+    $('#dmSaveSettings').onclick = async () => {
+      const body = {
+        id,
+        version: perm(id).version,
+        slots: draft.slots,
+        editClass: draft.editClass,
+        editSpells: draft.editSpells,
+        ...(draft.level !== Number(c.Level) ? { level: draft.level } : {}),
+      };
+      busy = true;
+      renderTabs();
+      renderMember();
+      try {
+        await api('/api/admin/character', { method: 'PATCH', body });
+        await reloadLive();
+        const fresh = find('character', id);
+        draft.level = Number(fresh.Level);
+        draft.slots = Number(fresh['Available Spell Slots']);
+        draft.editClass = !!perm(id).classUnlocked;
+        draft.editSpells = !!perm(id).spellsUnlocked;
+        for (const key of ['hp', 'will'])
+          draft[key] = draft.touched.has(key)
+            ? Math.min(draft[key], Number(fresh[key === 'hp' ? 'Max Health' : 'Max Willpower']))
+            : stateFor(id)[key];
+        message.textContent = '角色設定已儲存；玩家可分配成長點。';
+      } catch (e) {
+        message.textContent = e.message;
+      } finally {
+        busy = false;
+        renderTabs();
+        renderMember();
+      }
+    };
+    animateSurface(
+      panel,
+      [
+        { opacity: 0.5, transform: 'translateY(6px)' },
+        { opacity: 1, transform: 'translateY(0)' },
+      ],
+      { duration: 220 },
+    );
+  }
+  d.querySelectorAll('[data-activate]').forEach(
+    (button) =>
+      (button.onclick = async () => {
+        if (busy) return;
+        const camp = live.campaigns.find((c) => c.id === button.dataset.activate);
+        button.disabled = true;
         try {
           await api('/api/admin/campaign', {
             method: 'POST',
-            body: { id: c.id, active: !c.active },
+            body: { id: camp.id, active: !camp.active },
           });
           await reloadLive();
-          d.close();
-          openAdmin();
+          if (isCurrent()) {
+            d.close();
+            openAdmin();
+          }
         } catch (e) {
-          $('#manageMessage').textContent = e.message;
-        }
-      }),
-  );
-  $('#restAll').onclick = async () => {
-    if (!confirm('恢復目前戰役所有角色的意志？生命及傷口不會重設。')) return;
-    try {
-      await api('/api/admin/rest', {
-        method: 'POST',
-        body: { campaignId: campaign.system_id, operationId: crypto.randomUUID() },
-      });
-      await reloadLive();
-      $('#manageMessage').textContent = '全隊意志已恢復';
-    } catch (e) {
-      $('#manageMessage').textContent = e.message;
-    }
-  };
-  $$('[data-resource-save]').forEach(
-    (button) =>
-      (button.onclick = async () => {
-        const id = button.dataset.resourceSave;
-        if (
-          !$(`[data-resource-hp="${id}"]`).value.trim() ||
-          !$(`[data-resource-will="${id}"]`).value.trim()
-        ) {
-          $('#manageMessage').textContent = '請填寫生命與意志數值';
-          return;
-        }
-        const command = {
-          kind: 'adjust',
-          hp: Number($(`[data-resource-hp="${id}"]`).value),
-          will: Number($(`[data-resource-will="${id}"]`).value),
-        };
-        if (
-          !Number.isSafeInteger(command.hp) ||
-          !Number.isSafeInteger(command.will) ||
-          command.will < 0
-        ) {
-          $('#manageMessage').textContent = '請輸入整數生命與非負整數意志';
-          return;
-        }
-        let operation = resourceRetries.get(id);
-        if (!operation || JSON.stringify(operation.command) !== JSON.stringify(command)) {
-          operation = { operationId: crypto.randomUUID(), command };
-          resourceRetries.set(id, operation);
-        }
-        button.disabled = true;
-        const previous = stateFor(id).hp;
-        try {
-          const result = await api(`/api/characters/${id}/resource`, {
-            method: 'POST',
-            body: operation,
-          });
-          state.characters[id] = result.state;
-          live.permissions[id].version = result.version;
-          resourceRetries.delete(id);
-          undo = null;
-          render();
-          $(`[data-resource-hp="${id}"]`).value = result.state.hp;
-          $(`[data-resource-will="${id}"]`).value = result.state.will;
-          $('#manageMessage').textContent = '生命與意志已儲存';
-          saved();
-          if (id === selected && result.state.hp < previous && !result.replayed)
-            animateResourceFeedback('damage');
-        } catch (e) {
-          $('#manageMessage').textContent = e.message + '；可按相同按鈕重試';
-        } finally {
+          message.textContent = e.message;
           button.disabled = false;
         }
       }),
   );
-  $$('[data-adminsave]').forEach(
-    (b) =>
-      (b.onclick = async () => {
-        const id = b.dataset.adminsave;
-        b.disabled = true;
-        try {
-          await api('/api/admin/character', {
-            method: 'PATCH',
-            body: {
-              id,
-              version: perm(id).version,
-              level: Number($(`[data-level="${id}"]`).value),
-              slots: Number($(`[data-slots="${id}"]`).value),
-              editClass: $(`[data-editclass="${id}"]`).checked,
-              editSpells: $(`[data-editspells="${id}"]`).checked,
-            },
-          });
-          await reloadLive();
-          $('#manageMessage').textContent = '已儲存；玩家可在角色頁分配成長點';
-        } catch (e) {
-          $('#manageMessage').textContent = e.message;
-        } finally {
-          b.disabled = false;
-        }
-      }),
-  );
+  $('#restAll').onclick = () => {
+    $('#restConfirmation').hidden = false;
+  };
+  $('#cancelRest').onclick = () => {
+    $('#restConfirmation').hidden = true;
+  };
+  $('#confirmRest').onclick = async () => {
+    if (busy) return;
+    restOperationId ??= crypto.randomUUID();
+    busy = true;
+    $('#confirmRest').disabled = true;
+    $('#cancelRest').disabled = true;
+    $('#restAll').disabled = true;
+    renderTabs();
+    renderMember();
+    try {
+      await api('/api/admin/rest', {
+        method: 'POST',
+        body: { campaignId: campaign.system_id, operationId: restOperationId },
+      });
+      await reloadLive();
+      drafts.clear();
+      restOperationId = null;
+      if (isCurrent()) $('#restConfirmation').hidden = true;
+      message.textContent = '全隊生命與意志已補滿，傷口已清除。';
+    } catch (e) {
+      message.textContent = e.message + '；可重試同一次長休。';
+    } finally {
+      busy = false;
+      if (isCurrent()) {
+        $('#confirmRest').disabled = false;
+        $('#cancelRest').disabled = false;
+        $('#restAll').disabled = live.role !== 'dm';
+      }
+      renderTabs();
+      renderMember();
+    }
+  };
+  renderTabs();
+  renderMember();
 }
 
 let spellPreviewHideTimer;
@@ -529,7 +798,7 @@ function openLoadout() {
     `<section class="weapon-picker"><div class="picker-heading"><h3>⚔ 兵器契藏</h3><span id="weaponTotal" class="tag" aria-live="polite"></span></div><p class="muted">按分類挑選武器加入行裝；同款可攜帶多把，在右欄調整數量。</p><div id="weaponTypes" class="weapon-type-tabs" role="tablist" aria-label="武器分類"></div><div class="spell-ledger weapon-ledger"><section id="weaponCandidates" role="tabpanel"><h4>可選兵器</h4><div class="spell-choices"></div></section><section><h4>攜帶行裝</h4><div id="carriedWeapons" class="spell-choices"></div></section></div></section><section class="belief-picker"><div class="picker-heading"><h3>✺ 諸神與誓約</h3><span id="beliefTotal" class="tag" aria-live="polite"></span></div><p class="muted">點選神像締結或解除信仰，可同時保留多個誓約。</p><div id="chosenBeliefs" class="chosen-beliefs" aria-live="polite"></div><div class="belief-choice-grid">${beliefs
       .map((b) => {
         const key = BELIEF_KEYS[b.system_id];
-        return `<button type="button" class="belief-choice" data-loadout-belief="${esc(b.system_id)}" aria-pressed="${selectedBeliefs.has(b.system_id)}">${key ? `<img class="belief-choice-portrait" src="oria/${esc(key)}.png" alt="" loading="lazy">` : ''}<span class="belief-choice-sigil" aria-hidden="true">✺</span><strong>${esc(chineseName(b.Name))}</strong><span class="belief-choice-title">${esc(b.Title || '')}</span><span class="belief-choice-mark">${selectedBeliefs.has(b.system_id) ? '✦ 已締結' : '◇ 締結誓約'}</span></button>`;
+        return `<button type="button" class="belief-choice" data-loadout-belief="${esc(b.system_id)}" aria-pressed="${selectedBeliefs.has(b.system_id)}">${key ? `<img class="belief-choice-portrait" src="oria/${esc(key)}.png" alt="" loading="lazy">` : ''}<span class="belief-choice-sigil" aria-hidden="true">✺</span><strong>${esc(chineseName(b.Name))}</strong><span class="belief-choice-title">${esc(b.Title || '')}</span><span class="belief-choice-mark">${selectedBeliefs.has(b.system_id) ? '✓ 已選信仰' : '＋ 選擇信仰'}</span></button>`;
       })
       .join(
         '',
@@ -675,8 +944,8 @@ function openLoadout() {
       else selectedBeliefs.add(belief.system_id);
       b.setAttribute('aria-pressed', selectedBeliefs.has(belief.system_id));
       b.querySelector('.belief-choice-mark').textContent = selectedBeliefs.has(belief.system_id)
-        ? '✦ 已締結'
-        : '◇ 締結誓約';
+        ? '✓ 已選信仰'
+        : '＋ 選擇信仰';
       $('#beliefReading').textContent = [
         chineseName(belief.Name),
         belief.Desc,

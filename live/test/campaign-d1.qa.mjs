@@ -115,7 +115,7 @@ try {
   );
   const adjust = {
     operationId: 'd1-free-adjustment',
-    command: { kind: 'adjust', hp: -9, will: 8 },
+    command: { kind: 'adjust', hp: -9, will: 2 },
   };
   assert.equal((await call('owner', '/api/characters/hero/resource', adjust)).status, 403);
   const result = await call('dm', '/api/characters/hero/resource', adjust);
@@ -123,7 +123,7 @@ try {
   const value = await result.json();
   assert.notEqual(value.replayed, true, 'A first D1 resource update must not be labelled a replay');
   assert.equal(value.state.hp, -9);
-  assert.equal(value.state.will, 8);
+  assert.equal(value.state.will, 2);
   assert.deepEqual(value.state.wounds, [3, 3]);
   assert.equal(
     (await (await call('dm', '/api/characters/hero/resource', adjust)).json()).replayed,
@@ -154,6 +154,16 @@ try {
     assert.equal(repeated.version, first.version);
     assert.deepEqual(repeated.state, first.state);
   }
+  const restBody = { campaignId: 'active', operationId: 'd1-full-party-rest' };
+  assert.equal((await call('dm', '/api/admin/rest', restBody)).status, 200);
+  const recovered = JSON.parse(
+    (await db.prepare("SELECT state FROM characters WHERE id='hero'").first()).state,
+  );
+  assert.equal(recovered.hp, 15);
+  assert.equal(recovered.will, 2);
+  assert.equal(recovered.temp, 1);
+  assert.deepEqual(recovered.wounds, []);
+  assert.equal((await call('dm', '/api/admin/rest', restBody)).status, 200);
   assert.equal(
     (
       await call('dm', '/api/owner/content', {

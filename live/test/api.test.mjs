@@ -154,7 +154,7 @@ test('stale private edits and undo after subsequent change are rejected', async 
   );
   db.close();
 });
-test('long rest is DM-only and replay-safe; does not heal or clear wounds', async () => {
+test('long rest is DM-only and replay-safe; restores health and will, clears wounds', async () => {
   const { db, request } = await setup();
   await request('owner', '/api/characters/hero/resource', 'POST', {
     operationId: 'damage-rest',
@@ -172,8 +172,8 @@ test('long rest is DM-only and replay-safe; does not heal or clear wounds', asyn
     (await db.prepare("SELECT state FROM characters WHERE id='hero'").first()).state,
   );
   assert.equal(st.will, 2);
-  assert.equal(st.hp, 13);
-  assert.deepEqual(st.wounds, [1]);
+  assert.equal(st.hp, 15);
+  assert.deepEqual(st.wounds, []);
   db.close();
 });
 test('Google callback accepts only matching nonce and binds server-controlled invites', async () => {

@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { gameplayPreview } from './fixtures/gameplay-preview.mjs';
+import { startPrayer, finishPrayer } from './fixtures/prayer-actions.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const fixture = await gameplayPreview({ extraChoices: true });
 const browser = await chromium.launch({
@@ -102,7 +103,7 @@ try {
   assert(shake.connected);
   assert(Math.abs(shake.x) > 5);
   await capture(page, 'health-shake');
-  await page.click('#pray');
+  await startPrayer(page);
   await page.waitForFunction(
     () => window.ORIA.state.characters.hero.will === 1 && document.querySelector('.prayer-spark'),
   );
@@ -124,12 +125,16 @@ try {
   assert(
     sparks.filter((s) => s.visible && s.opacity > 0.5 && s.size >= 20 && s.connected).length >= 8,
   );
-  await page.locator('.prayer-halo').evaluate((el) => {
-    const a = el.getAnimations()[0];
-    a.pause();
-    a.currentTime = 450;
-  });
+  await page
+    .locator('.prayer-card[aria-pressed="true"] .prayer-halo')
+    .last()
+    .evaluate((el) => {
+      const a = el.getAnimations()[0];
+      a.pause();
+      a.currentTime = 450;
+    });
   await capture(page, 'prayer-sparks');
+  await finishPrayer(page);
   await page.locator('[data-settle="0"]').scrollIntoViewIfNeeded();
   const resourceScroll = await page.locator('#status').evaluate((el) => el.scrollTop);
   await page.click('[data-settle="0"]');
@@ -296,17 +301,17 @@ try {
   // A last will point still produces full-brightness sparks even though prayer disables.
   await page.click('#character');
   await page.selectOption('#character', 'hero');
-  await page.click('#pray');
+  await startPrayer(page);
   await page.waitForFunction(
     () => window.ORIA.state.characters.hero.will === 0 && document.querySelector('.prayer-spark'),
   );
   assert(await page.isDisabled('#pray'));
   assert(
     await page
-      .locator('.prayer-spark')
-      .first()
-      .evaluate((el) => !el.closest('button:disabled')),
+      .locator('.prayer-card[aria-pressed="true"]')
+      .evaluate((el) => getComputedStyle(el).opacity === '1'),
   );
+  await finishPrayer(page);
   fixture.db.raw.exec(
     "UPDATE characters SET state=json_set(state,'$.will',1),version=version+1 WHERE id='hero'",
   );
@@ -320,11 +325,14 @@ try {
       body: JSON.stringify({ error: '測試回應中斷' }),
     });
   });
-  await page.click('#pray');
-  await page.waitForSelector('#retrySave:not([hidden])');
+  await startPrayer(page, undefined, false);
+  await page.waitForFunction(() =>
+    document.querySelector('#prayerStatus').textContent.includes('未確認'),
+  );
+  await page.waitForFunction(() => !document.querySelector('.prayer-dialog .prayer-spark'));
   assert.equal(await page.locator('.prayer-spark').count(), 0);
   await page.unroute('**/api/characters/hero/resource');
-  await page.click('#retrySave');
+  await page.click('#confirmPrayer');
   await page.waitForFunction(() => window.ORIA.state.characters.hero.will === 0);
   assert.equal(await page.locator('.prayer-spark').count(), 0);
   await context.close();

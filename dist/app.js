@@ -84,6 +84,19 @@ function undoResource() {
 function queuePrivate() {
   persist();
 }
+function openPrayer() {
+  const r = find('character', selected);
+  const bs = ids(r.Beliefs).map((id) => find('beliefs', id));
+  if (!confirm('消耗 1 點意志進行祈禱？請在 Tabletop Simulator 完成魅力檢定 DC 9。')) return;
+  mutate((s) => s.will--, { kind: 'pray' });
+  showDetail(
+    '祈禱',
+    'Prayer',
+    bs
+      .map((b) => [b.Name, b['Belief Effect 1'], b['Belief Effect 2']].filter(Boolean).join('\n'))
+      .join('\n\n') + '\n\n效果欄若未填寫，請依 DM 裁定。',
+  );
+}
 // @live-state:end
 function showDetail(title, en, body) {
   $('#detail').classList.remove('lore-coloured');
@@ -126,18 +139,7 @@ function status() {
     mutate((s) => (s.temp = Math.max(0, s.temp + n)), { kind: 'temp', amount: n });
   };
   $('#undo').onclick = undoResource;
-  $('#pray').onclick = () => {
-    const bs = ids(r.Beliefs).map((id) => find('beliefs', id));
-    if (!confirm('消耗 1 點意志進行祈禱？請在 Tabletop Simulator 完成魅力檢定 DC 9。')) return;
-    mutate((s) => s.will--, { kind: 'pray' });
-    showDetail(
-      '祈禱',
-      'Prayer',
-      bs
-        .map((b) => [b.Name, b['Belief Effect 1'], b['Belief Effect 2']].filter(Boolean).join('\n'))
-        .join('\n\n') + '\n\n效果欄若未填寫，請依 DM 裁定。',
-    );
-  };
+  $('#pray').onclick = () => openPrayer();
   $$('[data-settle]').forEach(
     (b) =>
       (b.onclick = () =>

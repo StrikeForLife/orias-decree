@@ -36,6 +36,7 @@ function animateBeliefSelection(card, chosen, chip) {
     ],
     { duration: 520 },
   );
+  if (chosen) prayerSparks(card, card.querySelector('.prayer-card-crest'));
   if (chosen)
     animateSurface(
       chip,
@@ -88,11 +89,10 @@ function animateResourceFeedback(kind) {
     );
   }
 }
-function prayerSparks() {
+function prayerSparks(chamber = $('#status .will-chamber'), anchor) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const chamber = $('#status .will-chamber');
   if (!chamber) return;
-  const button = chamber.querySelector('#pray');
+  const button = anchor || chamber.querySelector('#pray');
   // Keep the origin beside the button the player just used, rather than below
   // the visible portion of a long resource folio. Do not inherit disabled opacity.
   const origin = button ? button.offsetTop + button.offsetHeight / 2 : chamber.clientHeight / 2;

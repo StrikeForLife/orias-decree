@@ -37,6 +37,12 @@ export function applyResource(state, sheet, command) {
       s.temp = Math.max(0, s.temp + integer(command.amount, -100000, 100000));
       break;
     case 'pray':
+      if (
+        command.beliefId !== undefined &&
+        (typeof command.beliefId !== 'string' ||
+          !splitIds(sheet.Beliefs).includes(command.beliefId))
+      )
+        fail(400, '只能向角色目前的信仰祈禱');
       if (s.will < 1) fail(409, '沒有足夠意志');
       s.will--;
       break;
@@ -53,17 +59,27 @@ export function applyResource(state, sheet, command) {
       break;
     case 'adjust':
       if (command.hp === undefined && command.will === undefined) fail(400, '缺少資源調整');
-      if (command.hp !== undefined) s.hp = integer(command.hp, -100000, 100000);
-      if (command.will !== undefined) s.will = integer(command.will, 0, 100000);
+      if (command.hp !== undefined)
+        s.hp = integer(command.hp, -100000, resourceMaximum(sheet, 'Max Health'));
+      if (command.will !== undefined)
+        s.will = integer(command.will, 0, resourceMaximum(sheet, 'Max Willpower'));
       break;
     case 'rest':
-      s.will = Number(sheet['Max Willpower']);
+      s.hp = resourceMaximum(sheet, 'Max Health');
+      s.will = resourceMaximum(sheet, 'Max Willpower');
+      s.wounds = [];
       break;
     default:
       fail(400, '未知角色操作');
   }
   if (!Number.isSafeInteger(s.hp) || s.wounds.length > 1000) fail(400, '角色狀態超出範圍');
   return s;
+}
+function resourceMaximum(sheet, key) {
+  const value = Number(sheet[key]);
+  if (!Number.isSafeInteger(value) || value < 0 || value > 100000)
+    fail(400, '角色資源上限無效，請先核對角色資料');
+  return value;
 }
 export function derived(sheet) {
   const level = Number(sheet.Level),
