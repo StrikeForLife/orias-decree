@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { gameplayPreview } from './fixtures/gameplay-preview.mjs';
+import { startPrayer, finishPrayer } from './fixtures/prayer-actions.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const output = new URL('../../.runtime/gameplay-ui/', import.meta.url);
 await fs.mkdir(output, { recursive: true });
@@ -51,7 +52,7 @@ try {
     () => window.ORIA.state.characters.hero.hp === 11 && window.__feedback.includes('hp'),
   );
   assert.equal(await page.locator('[data-settle]').count(), 0);
-  await page.click('#pray');
+  await startPrayer(page);
   await page.waitForFunction(
     () => window.ORIA.state.characters.hero.will === 1 && document.querySelector('.prayer-spark'),
   );
@@ -65,6 +66,7 @@ try {
       }),
   );
   await capture(page, 'prayer-and-character');
+  await finishPrayer(page);
   await page.click('#editLoadout');
   await page.fill('[data-weapon-quantity="blade"]', '3');
   await page.click('[data-weapon-type="support"]');
@@ -180,18 +182,19 @@ try {
   assert.equal(await dm.page.locator('#character option').count(), 2);
   await dm.page.click('#adminPanel');
   await dm.page.fill('[data-resource-hp="hero"]', '-5');
-  await dm.page.fill('[data-resource-will="hero"]', '7');
+  await dm.page.fill('[data-resource-will="hero"]', '2');
   await dm.page.click('[data-resource-save="hero"]');
   await dm.page.waitForFunction(
     () =>
-      window.ORIA.state.characters.hero.hp === -5 && window.ORIA.state.characters.hero.will === 7,
+      window.ORIA.state.characters.hero.hp === -5 && window.ORIA.state.characters.hero.will === 2,
   );
   await capture(dm.page, 'dm-resource-editor');
   await dm.context.close();
   const reduced = await open('owner', { reducedMotion: 'reduce' });
-  await reduced.page.click('#pray');
-  await reduced.page.waitForFunction(() => window.ORIA.state.characters.hero.will === 6);
+  await startPrayer(reduced.page);
+  await reduced.page.waitForFunction(() => window.ORIA.state.characters.hero.will === 1);
   assert.equal(await reduced.page.locator('.prayer-spark').count(), 0);
+  await finishPrayer(reduced.page);
   await reduced.context.close();
   fixture.db.raw.exec('UPDATE campaigns SET active=0');
   const empty = await open('reader');

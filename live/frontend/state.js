@@ -94,7 +94,8 @@ async function mutate(fn, command) {
 }
 async function commitResource(id, before, operationId, command) {
   pending = true;
-  let feedback = null;
+  let feedback = null,
+    committed = null;
   try {
     const result = await api(`/api/characters/${id}/resource`, {
       method: 'POST',
@@ -104,7 +105,9 @@ async function commitResource(id, before, operationId, command) {
     live.permissions[id].version = result.version;
     undo = { selected: id, operationId };
     retryOperation = null;
+    $('#retrySave').hidden = true;
     if (!result.replayed) feedback = command.kind;
+    committed = result;
     saved();
   } catch (e) {
     state.characters[id] = before;
@@ -117,6 +120,7 @@ async function commitResource(id, before, operationId, command) {
     render();
     if (selected === id && feedback) animateResourceFeedback(feedback);
   }
+  return committed;
 }
 async function undoResource() {
   if (pending || !undo) return;

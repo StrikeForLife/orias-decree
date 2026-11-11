@@ -1,3 +1,4 @@
+import { restParty } from './team-rest.mjs';
 import { changeLoadout } from './loadout.mjs';
 import { archiveInfo } from './archive-info.mjs';
 import { ownerRoutes, isSiteOwner, claimSiteOwner, selectionGuard } from './owner-admin.mjs';
@@ -611,20 +612,14 @@ async function routes(req, env, verifier) {
     await requireDM(db, s, camp.id);
     if (typeof b?.operationId !== 'string' || !/^[\w.-]{8,100}$/.test(b.operationId))
       fail(400, '缺少長休操作 ID');
-    const ids = await all(db, 'SELECT id FROM characters WHERE campaign_id=?', camp.id);
-    for (const c of ids)
-      await resource(db, s, c.id, {
-        operationId: b.operationId + ':' + c.id,
-        command: { kind: 'rest' },
-      });
-    return json({ ok: true, count: ids.length });
+    return json(await restParty(db, s, camp.id, b.operationId));
   }
   if (path === '/api/admin/character' && req.method === 'PATCH') {
     const b = await body(req),
       c = await character(db, b.id, s);
     await requireDM(db, s, c.campaign_id);
     if (b.stats !== undefined) fail(403, '屬性由角色擁有者分配成長點，DM 只能調整等級');
-    const sh = toSheet(c);
+    const sh = JSON.parse(c.sheet);
     if (b.level !== undefined) {
       const level = integer(b.level, 1, 8);
       if (
@@ -643,14 +638,23 @@ async function routes(req, env, verifier) {
       sh['Available Spell Slots'] = String(slots);
     }
     const result = b.level !== undefined ? derived(sh) : sh;
+    const state = JSON.parse(c.state);
+    if (b.level !== undefined) {
+      // An explicit level change can lower the resource maxima. Unrelated
+      // settings edits must not clamp or recalculate legacy character values.
+      state.hp = Math.min(state.hp, Number(result['Max Health']));
+      state.will = Math.min(state.will, Number(result['Max Willpower']));
+    }
     const r = await stmt(
       db,
-      'UPDATE characters SET sheet=?,edit_class=?,edit_spells=?,version=version+1 WHERE id=? AND version=?',
+      "UPDATE characters SET sheet=?,state=?,edit_class=?,edit_spells=?,version=version+1 WHERE id=? AND version=? AND EXISTS(SELECT 1 FROM access_grants WHERE user_id=? AND campaign_id=characters.campaign_id AND role='dm')",
       JSON.stringify(result),
+      b.level === undefined ? c.state : JSON.stringify(state),
       b.editClass === undefined ? c.edit_class : b.editClass ? 1 : 0,
       b.editSpells === undefined ? c.edit_spells : b.editSpells ? 1 : 0,
       c.id,
       integer(b.version, 0, Number.MAX_SAFE_INTEGER),
+      s.user_id,
     ).run();
     if (!r.meta.changes) fail(409, '角色已更新');
     return json({ ok: true });

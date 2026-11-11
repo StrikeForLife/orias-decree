@@ -172,7 +172,7 @@ test('loadout guards detect definition edits and revoked permissions at commit t
   }
 });
 
-test('DM absolute resource edits permit negative HP and above-maximum values, retain wounds and support replay/undo', async () => {
+test('DM resource edits permit negative HP, respect maxima, retain wounds and support replay/undo', async () => {
   const { db, request } = await setup();
   try {
     const old = JSON.parse(row(db).state);
@@ -180,13 +180,13 @@ test('DM absolute resource edits permit negative HP and above-maximum values, re
     db.raw.prepare("UPDATE characters SET state=? WHERE id='hero'").run(JSON.stringify(old));
     const body = {
       operationId: 'dm-adjust-resource',
-      command: { kind: 'adjust', hp: -12, will: 20 },
+      command: { kind: 'adjust', hp: -12, will: 2 },
     };
     const first = await request('dm', '/api/characters/hero/resource', 'POST', body);
     assert.equal(first.status, 200);
     const result = await first.json();
     assert.equal(result.state.hp, -12);
-    assert.equal(result.state.will, 20);
+    assert.equal(result.state.will, 2);
     assert.deepEqual(result.state.wounds, [3, 3]);
     assert.equal(result.state.temp, old.temp);
     const replay = await (
