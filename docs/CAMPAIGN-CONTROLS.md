@@ -63,3 +63,9 @@ Playwright 檢查實際連到同一 Worker 的本機合成資料站，測試所�
 ## 介面精修驗證
 
 `node live/test/ui-refinement.qa.mjs` 使用額外的合成選項測試可見的動畫畫格與火花、同列工具列、卡片／方向鍵／實際建角 payload、跨武器頁籤的數量保存、信仰神像與已選摘要、窄螢幕溢出及減少動態效果。截圖位於 `.runtime/ui-refinement/`。本次介面精修不需要新 migration，也不改後端 API 或正式資料。
+
+### 正規化 trigger 與動畫回應
+
+D1 的 `meta.changes` 包含正規化 trigger 的寫入；一次角色更新可能回報多於 1 筆。資源 CAS 以大於 0 判定本次成功，零才表示沒有更新。SQL `changes()` 仍維持「直接修改的筆數」語義，操作記錄、去重及撤銷交易不變。首次成功不標記 `replayed`，真正重送的操作才回傳 `replayed: true`，讓前端正確決定是否播放動畫。
+
+本機 SQLite adapter 的 metadata 現在也包含 trigger 寫入，避免開發／瀏覽器測試掩蓋 D1 差異。`resource-replay.test.mjs` 及本機 workerd/D1 檢查涵蓋受傷、傷口結算、祈禱的首次／重送回應；介面檢查另加入 API 延遲。本修正不需 migration，不重算或改寫舊角色。

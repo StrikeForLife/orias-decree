@@ -3,6 +3,9 @@ import { DatabaseSync } from 'node:sqlite';
 export function sqliteDB(path = ':memory:') {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys=ON;');
+  // D1 metadata counts trigger writes too. SQLite's statement.changes and SQL
+  // changes() count only direct writes, which must retain their SQLite semantics.
+  const totalChanges = () => Number(db.prepare('SELECT total_changes() AS n').get().n);
   class Statement {
     constructor(sql, args = []) {
       this.sql = sql;
@@ -18,8 +21,9 @@ export function sqliteDB(path = ':memory:') {
       return { results: db.prepare(this.sql).all(...this.args) };
     }
     async run() {
-      const r = db.prepare(this.sql).run(...this.args);
-      return { meta: { changes: Number(r.changes) } };
+      const before = totalChanges();
+      db.prepare(this.sql).run(...this.args);
+      return { meta: { changes: totalChanges() - before } };
     }
   }
   return {
@@ -30,8 +34,9 @@ export function sqliteDB(path = ':memory:') {
       try {
         const result = [];
         for (const statement of statements) {
-          const r = db.prepare(statement.sql).run(...statement.args);
-          result.push({ meta: { changes: Number(r.changes) } });
+          const before = totalChanges();
+          db.prepare(statement.sql).run(...statement.args);
+          result.push({ meta: { changes: totalChanges() - before } });
         }
         db.exec('COMMIT');
         return result;

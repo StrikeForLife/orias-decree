@@ -121,6 +121,7 @@ try {
   const result = await call('dm', '/api/characters/hero/resource', adjust);
   assert.equal(result.status, 200);
   const value = await result.json();
+  assert.notEqual(value.replayed, true, 'A first D1 resource update must not be labelled a replay');
   assert.equal(value.state.hp, -9);
   assert.equal(value.state.will, 8);
   assert.deepEqual(value.state.wounds, [3, 3]);
@@ -132,6 +133,27 @@ try {
     (await call('dm', '/api/characters/hero/undo', { operationId: adjust.operationId })).status,
     200,
   );
+  const counted = await db.batch([
+    db.prepare("UPDATE characters SET state=state WHERE id='hero'"),
+    db.prepare('SELECT changes() AS n'),
+  ]);
+  assert(counted[0].meta.changes > 1, 'D1 metadata must include normalization-trigger writes');
+  assert.equal(counted[1].results[0].n, 1, 'SQL changes() still counts only the direct row');
+  for (const [i, command] of [
+    { kind: 'damage', amount: 1, exempt: false },
+    { kind: 'settle', index: 0 },
+    { kind: 'pray' },
+  ].entries()) {
+    const action = { operationId: 'd1-visible-feedback-' + i, command };
+    const firstResponse = await call('owner', '/api/characters/hero/resource', action);
+    assert.equal(firstResponse.status, 200);
+    const first = await firstResponse.json();
+    assert.notEqual(first.replayed, true, command.kind + ' must allow first-use animation');
+    const repeated = await (await call('owner', '/api/characters/hero/resource', action)).json();
+    assert.equal(repeated.replayed, true);
+    assert.equal(repeated.version, first.version);
+    assert.deepEqual(repeated.state, first.state);
+  }
   assert.equal(
     (
       await call('dm', '/api/owner/content', {

@@ -36,6 +36,12 @@ async function singleRail(page) {
 }
 try {
   const { context, page } = await open();
+  // Keep the real Worker and D1-style trigger metadata; add network latency to
+  // check that feedback starts on the confirmed response after the final render.
+  await page.route('**/api/characters/*/resource', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await route.continue();
+  });
   await singleRail(page);
   await capture(page, 'command-rail');
   // Observe actual computed animation frames, not just calls to Element.animate.
@@ -89,7 +95,9 @@ try {
   await page.locator('[data-settle="0"]').scrollIntoViewIfNeeded();
   const resourceScroll = await page.locator('#status').evaluate((el) => el.scrollTop);
   await page.click('[data-settle="0"]');
-  await page.waitForFunction(() => window.ORIA.state.characters.hero.hp === 9);
+  await page.waitForFunction(
+    () => window.ORIA.state.characters.hero.hp === 9 && !document.querySelector('#hit').disabled,
+  );
   const scrollAfter = await page
     .locator('#status')
     .evaluate((el) => ({ value: el.scrollTop, max: el.scrollHeight - el.clientHeight }));
@@ -275,7 +283,8 @@ try {
   await reduced.page.fill('#damage', '1');
   await reduced.page.click('#hit');
   await reduced.page.waitForFunction(
-    (expected) => window.ORIA.state.characters.hero.hp === expected,
+    (expected) =>
+      window.ORIA.state.characters.hero.hp === expected && !document.querySelector('#hit').disabled,
     beforeReduced - 1,
   );
   assert.equal(
