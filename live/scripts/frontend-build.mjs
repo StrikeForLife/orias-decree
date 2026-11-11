@@ -21,7 +21,9 @@ export function buildApp(source, { state, notes, forms, motion }) {
   app = replaceRegion(app, 'live-notes', notes);
   return `${app}\n${forms}\n${motion}\n
 const originalRender = render;
+let lastRenderedCharacter = selected;
 render = function () {
+  const resourceScroll = $('#status').scrollTop;
   syncCharacterSelection();
   if (!selected) {
     $('#status').innerHTML='<div class="empty">你尚未擁有目前戰役的角色。</div>';
@@ -33,6 +35,8 @@ render = function () {
   } else originalRender();
   protectUI();
   renderGrowthPanel();
+  $('#status').scrollTop = lastRenderedCharacter === selected ? resourceScroll : 0;
+  lastRenderedCharacter = selected;
 };
 render();
 `;

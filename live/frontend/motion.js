@@ -11,18 +11,30 @@ function animateSurface(element, frames, options = {}) {
   activeMotions.set(element, animation);
 }
 function animateResourceFeedback(kind) {
-  if (kind === 'damage' || kind === 'settle')
+  if (kind === 'damage' || kind === 'settle') {
     animateSurface(
       $('#status .vitality-chamber'),
       [
-        { transform: 'translateX(0)', boxShadow: 'inset 0 0 0 2px #ef857acc,0 0 22px #b63d4055' },
-        { transform: 'translateX(-4px)', offset: 0.18 },
-        { transform: 'translateX(3px)', offset: 0.36 },
-        { transform: 'translateX(-2px)', offset: 0.55 },
+        { transform: 'translateX(0)', boxShadow: 'inset 0 0 0 3px #ff9c87,0 0 24px #df554b99' },
+        { transform: 'translateX(-9px)', offset: 0.16 },
+        { transform: 'translateX(8px)', offset: 0.32 },
+        { transform: 'translateX(-6px)', offset: 0.48 },
+        { transform: 'translateX(4px)', offset: 0.64 },
         { transform: 'translateX(0)', boxShadow: 'inset 0 0 0 3px #141e2255' },
       ],
-      { duration: 520 },
+      { duration: 680 },
     );
+    // The health card may be partly outside the independently scrolling folio.
+    // Light its visible frame too, without scrolling away from the action.
+    animateSurface(
+      $('#status'),
+      [
+        { outline: '2px solid #ff9c87', outlineOffset: '-5px' },
+        { outline: '2px solid transparent', outlineOffset: '-5px' },
+      ],
+      { duration: 800 },
+    );
+  }
   if (kind === 'pray') {
     prayerSparks();
     animateSurface(
@@ -44,24 +56,55 @@ function prayerSparks() {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const chamber = $('#status .will-chamber');
   if (!chamber) return;
-  for (let i = 0; i < 14; i++) {
+  const button = chamber.querySelector('#pray');
+  // Keep the origin beside the button the player just used, rather than below
+  // the visible portion of a long resource folio. Do not inherit disabled opacity.
+  const origin = button ? button.offsetTop + button.offsetHeight / 2 : chamber.clientHeight / 2;
+  const halo = document.createElement('span');
+  halo.className = 'prayer-halo';
+  halo.style.top = origin + 'px';
+  halo.setAttribute('aria-hidden', 'true');
+  chamber.append(halo);
+  const wave = halo.animate(
+    [
+      { opacity: 0, transform: 'translate(-50%,-50%) scale(.25)' },
+      { opacity: 0.9, transform: 'translate(-50%,-50%) scale(.9)', offset: 0.25 },
+      { opacity: 0, transform: 'translate(-50%,-50%) scale(1.5)' },
+    ],
+    { duration: 1100, easing: 'ease-out' },
+  );
+  wave.finished.then(
+    () => halo.remove(),
+    () => halo.remove(),
+  );
+  for (let i = 0; i < 18; i++) {
     const spark = document.createElement('span');
     spark.className = 'prayer-spark';
+    spark.style.top = origin + 'px';
     spark.textContent = i % 3 ? '✦' : '✧';
     spark.setAttribute('aria-hidden', 'true');
     chamber.append(spark);
-    const angle = (i / 14) * Math.PI * 2,
-      distance = 38 + (i % 4) * 13;
+    const angle = (i / 18) * Math.PI * 2,
+      distance = 44 + (i % 4) * 12;
     const animation = spark.animate(
       [
         { opacity: 0, transform: 'translate(-50%,-50%) scale(.2)' },
-        { opacity: 1, offset: 0.18 },
+        {
+          opacity: 1,
+          transform: `translate(calc(-50% + ${Math.cos(angle) * distance * 0.45}px),calc(-50% + ${Math.sin(angle) * distance * 0.45}px)) scale(1.1)`,
+          offset: 0.18,
+        },
+        {
+          opacity: 1,
+          transform: `translate(calc(-50% + ${Math.cos(angle) * distance * 0.75}px),calc(-50% + ${Math.sin(angle) * distance * 0.75}px)) scale(.9)`,
+          offset: 0.65,
+        },
         {
           opacity: 0,
           transform: `translate(calc(-50% + ${Math.cos(angle) * distance}px),calc(-50% + ${Math.sin(angle) * distance}px)) scale(.3) rotate(${i * 37}deg)`,
         },
       ],
-      { duration: 650, delay: (i % 4) * 35, easing: 'ease-out', fill: 'both' },
+      { duration: 1100, delay: (i % 4) * 45, easing: 'ease-out', fill: 'both' },
     );
     animation.finished.then(
       () => spark.remove(),

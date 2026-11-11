@@ -67,8 +67,10 @@ try {
   await capture(page, 'prayer-and-character');
   await page.click('#editLoadout');
   await page.fill('[data-weapon-quantity="blade"]', '3');
+  await page.click('[data-weapon-type="support"]');
+  await page.click('[data-add-weapon="shield"]');
   await page.fill('[data-weapon-quantity="shield"]', '2');
-  await page.check('[data-loadout-belief="other-faith"]');
+  await page.click('[data-loadout-belief="other-faith"]');
   await page.click('#saveLoadout');
   await page.waitForFunction(() => !document.querySelector('#manageDialog').open);
   assert.equal(
